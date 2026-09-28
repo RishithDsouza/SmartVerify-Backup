@@ -328,16 +328,16 @@ def run_phase3_tests():
         results["7_traceable_facts"] = "PASSED"
 
         # ─────────────────────────────────────────────────────────────────
-        # Test 8: All 27 Stable Particular IDs Mapped
+        # Test 8: All 26 Stable Particular IDs Mapped
         # ─────────────────────────────────────────────────────────────────
-        print("\n[Test 8] Testing Complete Mapping to all 27 Stable Particular IDs...")
+        print("\n[Test 8] Testing Complete Mapping to all 26 Stable Particular IDs...")
         EXPECTED_IDS = [
             "P1", "P2", "P2A", "P2B", "P2C", "P2D", "P2E",
             "P3", "P4", "P4A", "P4B", "P4C", "P4D",
             "P5", "P5A", "P5B", "P5C", "P6",
-            "P7", "P7A", "P7A1", "P7A2", "P7B", "P7B1", "P7B2", "P7B3", "P8"
+            "P7", "P7A", "P7A1", "P7A2", "P7B", "P7B1", "P7B2", "P7B3"
         ]
-        assert len(context.particular_facts) == 27
+        assert len(context.particular_facts) == 26
         EXPECTED_P7_TITLES = {
             "P7": "Dealer & Invoice/RC Book Verification for Vehicles/Machineries",
             "P7A": "For New Vehicles/Machineries",
@@ -365,7 +365,7 @@ def run_phase3_tests():
         assert "charge_hypothecation_noted_in_rc" in context.particular_facts["P7B2"].shared_facts
         assert "insurance_details_validity" in context.particular_facts["P7B3"].shared_facts
 
-        print("  -> PASSED: All 27 stable Particular IDs exist in normalized context, with exact Phase 2 P7 semantic mappings.")
+        print("  -> PASSED: All 26 stable Particular IDs exist in normalized context, with exact Phase 2 P7 semantic mappings.")
         results["8_particular_ids_mapped"] = "PASSED"
 
         # ─────────────────────────────────────────────────────────────────
@@ -488,7 +488,7 @@ def run_phase3_tests():
         assert reconstituted.input_hash == context.input_hash
         assert reconstituted.applicant.name == context.applicant.name
         assert len(reconstituted.guarantors) == len(context.guarantors)
-        assert len(reconstituted.particular_facts) == 27
+        assert len(reconstituted.particular_facts) == 26
         print("  -> PASSED: Context serializes to clean JSON and deserializes losslessly.")
         results["15_serialization"] = "PASSED"
 
@@ -509,6 +509,11 @@ def run_phase3_tests():
         db.close()
 
     return results
+
+
+def test_phase3_report_context_builder():
+    res = run_phase3_tests()
+    assert all(v == "PASSED" for v in res.values())
 
 
 if __name__ == "__main__":

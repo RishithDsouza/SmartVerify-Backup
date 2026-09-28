@@ -295,20 +295,20 @@ def run_phase4_tests():
         results["3_4_template_preservation"] = "PASSED"
 
         # ─────────────────────────────────────────────────────────────────
-        # Test 5: All 27 Particular IDs Rendered
+        # Test 5: All 26 Particular IDs Rendered
         # ─────────────────────────────────────────────────────────────────
-        print("\n[Test 5] Testing All 27 Particular IDs Rendered...")
+        print("\n[Test 5] Testing All 26 Particular IDs Rendered...")
         EXPECTED_IDS = [
             "P1", "P2", "P2A", "P2B", "P2C", "P2D", "P2E",
             "P3", "P4", "P4A", "P4B", "P4C", "P4D",
             "P5", "P5A", "P5B", "P5C", "P6",
-            "P7", "P7A", "P7A1", "P7A2", "P7B", "P7B1", "P7B2", "P7B3", "P8"
+            "P7", "P7A", "P7A1", "P7A2", "P7B", "P7B1", "P7B2", "P7B3"
         ]
-        assert len(report.particulars) == 27
+        assert len(report.particulars) == 26
         rendered_ids = [p.id for p in report.particulars]
         assert rendered_ids == EXPECTED_IDS
-        print("  -> PASSED: Exact 1-to-1 match for all 27 Particular IDs in rendered report.")
-        results["5_all_27_ids"] = "PASSED"
+        print("  -> PASSED: Exact 1-to-1 match for all 26 Particular IDs in rendered report.")
+        results["5_all_26_ids"] = "PASSED"
 
         # ─────────────────────────────────────────────────────────────────
         # Test 6: Display Ordering Matches Template Exactly
@@ -316,7 +316,7 @@ def run_phase4_tests():
         print("\n[Test 6] Testing Display Ordering Contiguity & Monotonicity...")
         for idx, p in enumerate(report.particulars, start=1):
             assert p.display_order == idx, f"Display order mismatch: expected {idx}, got {p.display_order}"
-        print("  -> PASSED: Display order is strictly contiguous and monotonic from 1 to 27.")
+        print("  -> PASSED: Display order is strictly contiguous and monotonic from 1 to 26.")
         results["6_display_ordering"] = "PASSED"
 
         # ─────────────────────────────────────────────────────────────────
@@ -473,10 +473,9 @@ def run_phase4_tests():
         # Verify output is structured fact, NOT AI prose
         assert p4b.shared_verification is not None
         assert "tax_receipt_status" in p4b.shared_verification.formatted_facts
-        p8 = report.get_particular("P8")
-        assert p8.narrative_allowed is True
-        assert p8.shared_verification is not None
-        assert "loan_amount" in p8.shared_verification.formatted_facts
+        p7a2 = report.get_particular("P7A2")
+        assert p7a2.narrative_allowed is True
+        assert p7a2.shared_verification is not None
         print("  -> PASSED: narrative_allowed remains purely passive metadata; no AI/LLM calls invoked.")
         results["17_no_ai_narrative"] = "PASSED"
 
@@ -512,7 +511,7 @@ def run_phase4_tests():
         report_dict = report.model_dump()
         reconstructed = BaselineReport.model_validate(report_dict)
         assert reconstructed.template_key == report.template_key
-        assert len(reconstructed.particulars) == 27
+        assert len(reconstructed.particulars) == 26
         assert reconstructed.input_hash == report.input_hash
         assert reconstructed.header.formatted_loan_amount == "₹ 85,00,000.00"
         print("  -> PASSED: Report serializes to JSON and deserializes back losslessly.")
@@ -536,6 +535,10 @@ def run_phase4_tests():
         db.commit()
         db.close()
         print("  -> Cleanup complete.")
+
+
+def test_phase4_baseline_renderer():
+    run_phase4_tests()
 
 
 if __name__ == "__main__":

@@ -45,12 +45,58 @@ app.mount("/reports", StaticFiles(directory=settings.REPORT_DIR), name="reports"
 
 # API Routers
 app.include_router(auth.router,         prefix="/auth",         tags=["Authentication"])
+app.include_router(auth.router,         prefix="/api/auth",     tags=["Authentication"])
 app.include_router(documents.router,    prefix="/documents",    tags=["Documents"])
+app.include_router(documents.router,    prefix="/api/documents",tags=["Documents"])
 app.include_router(verification.router, prefix="/verify",       tags=["Verification"])
+app.include_router(verification.router, prefix="/api/verify",   tags=["Verification"])
 app.include_router(applications.router, prefix="/applications", tags=["Applications"])
+app.include_router(applications.router, prefix="/api/applications", tags=["Applications"])
 app.include_router(dashboard.router,    prefix="/dashboard",    tags=["Dashboard"])
+app.include_router(dashboard.router,    prefix="/api/dashboard",tags=["Dashboard"])
 app.include_router(reports.router,      prefix="/report",       tags=["Reports"])
 app.include_router(reports.router,      prefix="/api/reports",  tags=["Reports"])
+
+
+@app.on_event("startup")
+def ensure_default_users():
+    """Ensure default demo accounts exist on startup."""
+    from sqlalchemy import func
+    from app.db.database import SessionLocal
+    from app.models.user import User, UserRole
+    from app.core.security import hash_password
+    db = SessionLocal()
+    try:
+        admin_email = "admin@smartverify.com"
+        admin = db.query(User).filter(func.lower(User.email) == admin_email).first()
+        if not admin:
+            admin = User(
+                name="Admin User",
+                email=admin_email,
+                password=hash_password("admin123"),
+                role=UserRole.admin,
+            )
+            db.add(admin)
+            logger.info("Created default admin user: %s", admin_email)
+
+        officer_email = "officer@smartverify.com"
+        officer = db.query(User).filter(func.lower(User.email) == officer_email).first()
+        if not officer:
+            officer = User(
+                name="Loan Officer",
+                email=officer_email,
+                password=hash_password("officer123"),
+                role=UserRole.loan_officer,
+            )
+            db.add(officer)
+            logger.info("Created default officer user: %s", officer_email)
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning("Could not verify/seed default users: %s", e)
+    finally:
+        db.close()
 
 
 @app.get("/health", tags=["Health"])
@@ -79,6 +125,17 @@ if FRONTEND_BUILD_DIR.is_dir() and (FRONTEND_BUILD_DIR / "index.html").is_file()
         # Preserve backend API, documentation, static uploads/reports, and file downloads
         is_api_or_system = (
             path.startswith("/api/")
+            or path.startswith("/auth/")
+            or path == "/auth"
+            or path.startswith("/documents/")
+            or path == "/documents"
+            or path.startswith("/verify/")
+            or path == "/verify"
+            or path.startswith("/applications/")
+            or path == "/applications"
+            or path.startswith("/dashboard/stats")
+            or path.startswith("/report/")
+            or path == "/report"
             or path.startswith("/openapi.json")
             or path.startswith("/docs")
             or path.startswith("/redoc")

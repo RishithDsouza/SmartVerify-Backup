@@ -167,7 +167,6 @@ def create_mock_report_context() -> ReportContext:
         "P7B1": ParticularContextFact(particular_id="P7B1", section="7", title="RC No", parent_id="P7B", applicant_supported=True, guarantor_supported=False, data_type="text", required=False, narrative_allowed=False, display_order=24, shared_facts={"rc_number": "KA01MJ1234"}, status="available", missing_fields=[]),
         "P7B2": ParticularContextFact(particular_id="P7B2", section="7", title="Charge", parent_id="P7B", applicant_supported=True, guarantor_supported=False, data_type="text", required=False, narrative_allowed=False, display_order=25, shared_facts={"charge_details": "Hypothecated"}, status="available", missing_fields=[]),
         "P7B3": ParticularContextFact(particular_id="P7B3", section="7", title="Insurance", parent_id="P7B", applicant_supported=True, guarantor_supported=False, data_type="composite", required=False, narrative_allowed=False, display_order=26, shared_facts={"insurance_details": "Comprehensive Policy Valid until 2027"}, status="available", missing_fields=[]),
-        "P8": ParticularContextFact(particular_id="P8", section="8", title="Opinion", parent_id=None, applicant_supported=True, guarantor_supported=True, data_type="narrative", required=True, narrative_allowed=True, display_order=27, shared_facts={"officer_recommendation": "Positive"}, status="available", missing_fields=[]),
     }
 
     return ReportContext(
@@ -274,7 +273,7 @@ def run_phase7_tests():
     assert val_report.overall_status == "VALID", f"Expected VALID, got {val_report.overall_status}, blocking: {[i.message for i in val_report.blocking_issues]}"
     assert val_report.is_valid is True
     assert len(val_report.blocking_issues) == 0
-    assert len(val_report.validation_results) == 27
+    assert len(val_report.validation_results) == 26
     print("  -> PASSED: Valid report achieved overall_status='VALID' with 0 blocking issues.")
     results["2_valid_report_passes"] = "PASSED"
 
@@ -621,7 +620,7 @@ def run_phase7_tests():
     reconstructed = ValidatedReport.model_validate(serialized)
     assert reconstructed.application_id == val_report.application_id
     assert reconstructed.overall_status == val_report.overall_status
-    assert len(reconstructed.validation_results) == 27
+    assert len(reconstructed.validation_results) == 26
     print("  -> PASSED: ValidatedReport serializes and deserializes losslessly.")
     results["26_lossless_serialization"] = "PASSED"
 

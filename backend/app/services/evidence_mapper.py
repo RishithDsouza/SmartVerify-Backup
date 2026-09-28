@@ -485,16 +485,6 @@ def map_evidence(
                 if f.particular_id == "P7B3" or f.category in ["insurance", "vehicle_insurance"]:
                     add_ref(_build_finding_reference(f, pid, "rc_evidence", party_name_map))
 
-        elif pid == "P8":
-            # General Information / Opinion (strictly selective, never blind dump)
-            for d in context.documents:
-                if d.document_type in {"loan_application", "chatbot_upload", "other"}:
-                    add_ref(_build_doc_reference(d, pid, "other_relevant_evidence", party_name_map))
-
-            for f in context.findings:
-                if f.particular_id == "P8" or f.category in ["general", "opinion", "market_feedback"]:
-                    add_ref(_build_finding_reference(f, pid, "other_relevant_evidence", party_name_map))
-
         # ─────────────────────────────────────────────────────────────
         # 2. Deterministic Ordering & Party Segregation
         # ─────────────────────────────────────────────────────────────

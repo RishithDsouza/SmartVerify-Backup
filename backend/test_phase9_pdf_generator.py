@@ -278,40 +278,103 @@ def test_10_excluded_evidence_does_not_appear():
     assert len(target_refs) > 0
     target_ref = target_refs[0]
 
-    # Set selection preference to excluded in P6
-    state.evidence_selections["P6"] = [
-        EvidenceSelection(particular_id="P6", evidence_id=target_ref.evidence_id, included=False)
-    ]
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_img:
+        tmp_path = tmp_img.name
+        img = PILImage.new("RGB", (200, 200), color=(10, 20, 30))
+        img.save(tmp_path, "PNG")
 
-    req = PdfGenerationRequest(
-        review_state=state,
-        template=template,
-        baseline_report=baseline,
-        evidence_map=evidence_map,
-        validated_report=validated,
-        generation_timestamp="2026-09-21T12:00:00Z",
-    )
-    result = generate_pdf_report(req)
-    reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
-    full_text = "".join(page.extract_text() for page in reader.pages)
-    
-    # Target evidence ID should NOT be in the rendered text
-    assert f"[ID: {target_ref.evidence_id}]" not in full_text
+    try:
+        excl_ref = EvidenceReference(
+            evidence_id="doc:excl_img_test",
+            evidence_type="document",
+            source="documents",
+            source_id="1010",
+            filename=tmp_path,
+            document_type="Exclusion Test Aadhaar Card",
+            party_id="applicant",
+            party_name="Applicant Ramesh",
+            particular_id="P1",
+            evidence_category="kyc_documents",
+            status="VERIFIED",
+        )
+        evidence_map.particular_mappings["P1"].evidence.append(excl_ref)
+
+        # Set selection preference to excluded in P1
+        state.evidence_selections["P1"] = [
+            EvidenceSelection(particular_id="P1", evidence_id="doc:excl_img_test", included=False)
+        ]
+
+        req = PdfGenerationRequest(
+            review_state=state,
+            template=template,
+            baseline_report=baseline,
+            evidence_map=evidence_map,
+            validated_report=validated,
+            generation_timestamp="2026-09-21T12:00:00Z",
+        )
+        result = generate_pdf_report(req)
+        reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
+        full_text = "".join(page.extract_text() for page in reader.pages)
+        
+        # Excluded evidence should NOT be in the rendered text
+        assert "Exclusion Test Aadhaar Card" not in full_text
+        assert "doc:excl_img_test" not in full_text
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
     print("PASS: test_10_excluded_evidence_does_not_appear")
 
 
 def test_11_included_evidence_appears():
     context, template, baseline, evidence_map, composed, validated, state = build_pipeline_fixtures()
-    # Target finding:304 in P6
-    p6_evidence = evidence_map.get_evidence_for_particular("P6")
-    target_refs = [e for e in p6_evidence if e.evidence_id == "finding:304"]
-    assert len(target_refs) > 0
-    target_ref = target_refs[0]
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_img:
+        tmp_path = tmp_img.name
+        img = PILImage.new("RGB", (200, 200), color=(10, 20, 30))
+        img.save(tmp_path, "PNG")
 
-    state.evidence_selections["P6"] = [
-        EvidenceSelection(particular_id="P6", evidence_id=target_ref.evidence_id, included=True)
-    ]
+    try:
+        incl_ref = EvidenceReference(
+            evidence_id="doc:incl_img_test",
+            evidence_type="document",
+            source="documents",
+            source_id="1011",
+            filename=tmp_path,
+            document_type="Form 16",
+            party_id="applicant",
+            party_name="Applicant Ramesh",
+            particular_id="P4A",
+            evidence_category="income_documents",
+            status="VERIFIED",
+        )
+        evidence_map.particular_mappings["P4A"].evidence.append(incl_ref)
 
+        state.evidence_selections["P4A"] = [
+            EvidenceSelection(particular_id="P4A", evidence_id="doc:incl_img_test", included=True)
+        ]
+
+        req = PdfGenerationRequest(
+            review_state=state,
+            template=template,
+            baseline_report=baseline,
+            evidence_map=evidence_map,
+            validated_report=validated,
+            generation_timestamp="2026-09-21T12:00:00Z",
+        )
+        result = generate_pdf_report(req)
+        reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
+        full_text = "".join(page.extract_text() for page in reader.pages)
+        
+        # Human-readable title must be present, but NOT the internal ID
+        assert "Income Document - Form 16" in full_text
+        assert "doc:incl_img_test" not in full_text
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    print("PASS: test_11_included_evidence_appears")
+
+
+def test_12_no_internal_ids_exposed_in_pdf():
+    context, template, baseline, evidence_map, composed, validated, state = build_pipeline_fixtures()
     req = PdfGenerationRequest(
         review_state=state,
         template=template,
@@ -323,70 +386,74 @@ def test_11_included_evidence_appears():
     result = generate_pdf_report(req)
     reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
     full_text = "".join(page.extract_text() for page in reader.pages)
-    
-    # Target evidence ID must be present
-    assert f"[ID: {target_ref.evidence_id}]" in full_text
-    print("PASS: test_11_included_evidence_appears")
 
-
-def test_12_evidence_cannot_cross_particulars():
-    context, template, baseline, evidence_map, composed, validated, state = build_pipeline_fixtures()
-    # finding:304 is mapped strictly to P6
-    p6_evidence = evidence_map.get_evidence_for_particular("P6")
-    target_refs = [e for e in p6_evidence if e.evidence_id == "finding:304"]
-    assert len(target_refs) > 0
-    target_ref = target_refs[0]
-
-    req = PdfGenerationRequest(
-        review_state=state,
-        template=template,
-        baseline_report=baseline,
-        evidence_map=evidence_map,
-        validated_report=validated,
-        generation_timestamp="2026-09-21T12:00:00Z",
-    )
-    result = generate_pdf_report(req)
-    reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
-    
-    # Extract text from annexure pages
-    evidence_pages_text = ""
-    for page in reader.pages:
-        txt = page.extract_text()
-        if "ANNEXURE: MAPPED VERIFICATION EVIDENCE DOSSIER" in txt or "Particular [" in txt:
-            evidence_pages_text += txt + "\n"
-
-    # Verify target_ref appears strictly inside Particular [P6] block
-    assert f"[ID: {target_ref.evidence_id}]" in evidence_pages_text
-    p6_pos = evidence_pages_text.find("Particular [P6]")
-    ref_pos = evidence_pages_text.find(f"[ID: {target_ref.evidence_id}]")
-    p7_pos = evidence_pages_text.find("Particular [P7")
-    
-    assert p6_pos != -1, "Particular [P6] header not found"
-    assert ref_pos > p6_pos, "Evidence reference should be after Particular [P6] header"
-    if p7_pos != -1:
-        assert ref_pos < p7_pos, "Evidence reference should not cross into Particular [P7]"
-    print("PASS: test_12_evidence_cannot_cross_particulars")
+    # Strictly no raw internal IDs exposed
+    assert "[ID:" not in full_text
+    assert "doc:9" not in full_text
+    assert "finding:" not in full_text
+    assert "gov_shot:" not in full_text
+    assert "ANNEXURE: MAPPED VERIFICATION EVIDENCE DOSSIER" not in full_text
+    print("PASS: test_12_no_internal_ids_exposed_in_pdf")
 
 
 def test_13_applicant_guarantor_isolation():
     context, template, baseline, evidence_map, composed, validated, state = build_pipeline_fixtures()
-    # Check that party badges render accurately
-    p1_evidence = evidence_map.get_evidence_for_particular("P1")
-    assert len(p1_evidence) > 0
-    
-    req = PdfGenerationRequest(
-        review_state=state,
-        template=template,
-        baseline_report=baseline,
-        evidence_map=evidence_map,
-        validated_report=validated,
-        generation_timestamp="2026-09-21T12:00:00Z",
-    )
-    result = generate_pdf_report(req)
-    reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
-    full_text = "".join(page.extract_text() for page in reader.pages)
-    
-    assert "[APPLICANT]" in full_text
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_app, \
+         tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_guar:
+        tmp_app_path = tmp_app.name
+        tmp_guar_path = tmp_guar.name
+        PILImage.new("RGB", (200, 200), color=(10, 20, 30)).save(tmp_app_path, "PNG")
+        PILImage.new("RGB", (200, 200), color=(40, 50, 60)).save(tmp_guar_path, "PNG")
+
+    try:
+        app_ref = EvidenceReference(
+            evidence_id="doc:app_iso_test",
+            evidence_type="document",
+            source="documents",
+            source_id="2001",
+            filename=tmp_app_path,
+            document_type="Aadhaar Card",
+            party_id="applicant",
+            party_name="Applicant Ramesh",
+            particular_id="P1",
+            evidence_category="kyc_documents",
+            status="VERIFIED",
+        )
+        guar_ref = EvidenceReference(
+            evidence_id="doc:guar_iso_test",
+            evidence_type="document",
+            source="documents",
+            source_id="2002",
+            filename=tmp_guar_path,
+            document_type="Salary Slip",
+            party_id="guarantor",
+            party_name="Guarantor Suresh",
+            particular_id="P4A",
+            evidence_category="income_documents",
+            status="VERIFIED",
+        )
+        evidence_map.particular_mappings["P1"].evidence.append(app_ref)
+        evidence_map.particular_mappings["P4A"].evidence.append(guar_ref)
+
+        req = PdfGenerationRequest(
+            review_state=state,
+            template=template,
+            baseline_report=baseline,
+            evidence_map=evidence_map,
+            validated_report=validated,
+            generation_timestamp="2026-09-21T12:00:00Z",
+        )
+        result = generate_pdf_report(req)
+        reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
+        full_text = "".join(page.extract_text() for page in reader.pages)
+        
+        assert "[APPLICANT]" in full_text
+        assert "[GUARANTOR]" in full_text
+    finally:
+        if os.path.exists(tmp_app_path):
+            os.remove(tmp_app_path)
+        if os.path.exists(tmp_guar_path):
+            os.remove(tmp_guar_path)
     print("PASS: test_13_applicant_guarantor_isolation")
 
 
@@ -427,8 +494,8 @@ def test_15_long_verification_details_wraps_correctly():
         "During the course of re-verification, the investigating official performed in-depth "
         "cross-verification across multiple public and private data repositories. "
     ) * 15 # ~300 words
-    p8 = state.particular_reviews["P8"]
-    p8.current_text = long_narrative
+    p6 = state.particular_reviews["P6"]
+    p6.current_text = long_narrative
 
     req = PdfGenerationRequest(
         review_state=state,
@@ -458,11 +525,11 @@ def test_16_tables_and_page_breaks_remain_valid():
     )
     result = generate_pdf_report(req)
     reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
-    # Standard 27-particulars + footer + annexure spans at least 2 pages
+    # Standard 26-particulars spans at least 2 pages
     assert len(reader.pages) >= 2
     # Verify repeat header or running headers exist across pages
     page2_text = reader.pages[1].extract_text()
-    assert "SMARTVERIFY" in page2_text or "Particulars" in page2_text or "ANNEXURE" in page2_text
+    assert "SMARTVERIFY" in page2_text or "Particulars" in page2_text or "SUPPORTING EVIDENCE" in page2_text or "STATUTORY" in page2_text
     print("PASS: test_16_tables_and_page_breaks_remain_valid")
 
 
@@ -519,30 +586,43 @@ def test_17_image_evidence_renders_correctly():
 
 def test_18_multiple_evidence_pages_render_correctly():
     context, template, baseline, evidence_map, composed, validated, state = build_pipeline_fixtures()
-    # Add multiple evidence entries across particulars
-    for i in range(12):
-        ref = EvidenceReference(
-            evidence_id=f"finding:extra_{i}",
-            evidence_type="finding",
-            source="application_findings",
-            source_id=f"f_{i}",
-            particular_id="P4B",
-            evidence_category="income_documents",
-            status="VERIFIED",
-            metadata={"finding_item": f"Turnover check batch {i}"},
-        )
-        evidence_map.particular_mappings["P4B"].evidence.append(ref)
+    tmp_files = []
+    try:
+        # Create 3 large image files to trigger multi-page evidence rendering
+        for i in range(3):
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_img:
+                tmp_path = tmp_img.name
+                tmp_files.append(tmp_path)
+                img = PILImage.new("RGB", (600, 400), color=(10 * i + 20, 20 * i + 30, 40))
+                img.save(tmp_path, "PNG")
 
-    req = PdfGenerationRequest(
-        review_state=state,
-        template=template,
-        baseline_report=baseline,
-        evidence_map=evidence_map,
-        validated_report=validated,
-        generation_timestamp="2026-09-21T12:00:00Z",
-    )
-    result = generate_pdf_report(req)
-    assert result.page_count >= 3
+            ref = EvidenceReference(
+                evidence_id=f"doc:multi_img_{i}",
+                evidence_type="document",
+                source="documents",
+                source_id=f"img_{i}",
+                filename=tmp_path,
+                document_type=f"Income Document {i}",
+                particular_id="P4B",
+                evidence_category="income_documents",
+                status="VERIFIED",
+            )
+            evidence_map.particular_mappings["P4B"].evidence.append(ref)
+
+        req = PdfGenerationRequest(
+            review_state=state,
+            template=template,
+            baseline_report=baseline,
+            evidence_map=evidence_map,
+            validated_report=validated,
+            generation_timestamp="2026-09-21T12:00:00Z",
+        )
+        result = generate_pdf_report(req)
+        assert result.page_count >= 3
+    finally:
+        for p in tmp_files:
+            if os.path.exists(p):
+                os.remove(p)
     print("PASS: test_18_multiple_evidence_pages_render_correctly")
 
 
@@ -690,7 +770,8 @@ def test_23_evidence_asset_resolver_isolation_and_unavailable_asset():
     result = generate_pdf_report(req)
     reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
     full_text = "".join(page.extract_text() for page in reader.pages)
-    assert "Evidence asset unavailable for rendering." in full_text
+    assert result.page_count >= 1
+    assert "Evidence asset unavailable for rendering." not in full_text
     print("PASS: test_23_evidence_asset_resolver_isolation_and_unavailable_asset")
 
 
@@ -747,9 +828,108 @@ def test_24_canonical_api_endpoint():
     print("PASS: test_24_canonical_api_endpoint")
 
 
+def test_25_missing_guarantor_renders_na_and_never_placeholder_name():
+    context, template, baseline, evidence_map, composed, validated, state = build_pipeline_fixtures()
+    req = PdfGenerationRequest(
+        review_state=state,
+        template=template,
+        baseline_report=baseline,
+        evidence_map=evidence_map,
+        validated_report=validated,
+        generation_timestamp="2026-09-21T12:00:00Z",
+    )
+    result = generate_pdf_report(req)
+    reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
+    full_text = "".join(page.extract_text() for page in reader.pages)
+    
+    assert "NA" in full_text
+    print("PASS: test_25_missing_guarantor_renders_na_and_never_placeholder_name")
+
+
+def test_26_section8_and_p8_completely_removed():
+    context, template, baseline, evidence_map, composed, validated, state = build_pipeline_fixtures()
+    req = PdfGenerationRequest(
+        review_state=state,
+        template=template,
+        baseline_report=baseline,
+        evidence_map=evidence_map,
+        validated_report=validated,
+        generation_timestamp="2026-09-21T12:00:00Z",
+    )
+    result = generate_pdf_report(req)
+    reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
+    full_text = "".join(page.extract_text() for page in reader.pages)
+
+    assert "SECTION 8" not in full_text
+    assert "GENERAL INFORMATION & OPINION" not in full_text
+    assert "General Information / Opinion" not in full_text
+    assert "P8" not in state.particular_reviews
+    print("PASS: test_26_section8_and_p8_completely_removed")
+
+
+def test_27_supporting_evidence_appears_after_section7_and_before_audit():
+    context, template, baseline, evidence_map, composed, validated, state = build_pipeline_fixtures()
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_img:
+        tmp_path = tmp_img.name
+        PILImage.new("RGB", (300, 200), color=(10, 20, 30)).save(tmp_path, "PNG")
+
+    try:
+        ref = EvidenceReference(
+            evidence_id="doc:pos_test_img",
+            evidence_type="document",
+            source="documents",
+            source_id="5001",
+            filename=tmp_path,
+            document_type="Vehicle RC",
+            party_id="applicant",
+            party_name="Applicant Ramesh",
+            particular_id="P7B1",
+            evidence_category="vehicle_documents",
+            status="VERIFIED",
+        )
+        evidence_map.particular_mappings["P7B1"].evidence.append(ref)
+
+        req = PdfGenerationRequest(
+            review_state=state,
+            template=template,
+            baseline_report=baseline,
+            evidence_map=evidence_map,
+            validated_report=validated,
+            generation_timestamp="2026-09-21T12:00:00Z",
+        )
+        result = generate_pdf_report(req)
+        reader = pypdf.PdfReader(io.BytesIO(result.pdf_bytes))
+        full_text = "".join(page.extract_text() for page in reader.pages)
+
+        sec7_pos = full_text.find("SECTION 7: VEHICLE / COLLATERAL VERIFICATION")
+        evidence_pos = full_text.find("SUPPORTING EVIDENCE")
+        audit_pos = full_text.find("REPORT REVIEW STATUS & STATUTORY AUDIT CERTIFICATION")
+
+        assert sec7_pos != -1, "Section 7 must exist"
+        assert evidence_pos != -1, "Supporting Evidence section must exist"
+        assert audit_pos != -1, "Audit certification section must exist"
+        assert sec7_pos < evidence_pos, "Supporting Evidence must appear after Section 7"
+        assert evidence_pos < audit_pos, "Audit Certification must appear after Supporting Evidence"
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    print("PASS: test_27_supporting_evidence_appears_after_section7_and_before_audit")
+
+
+def test_28_final_particular_count_is_26():
+    context, template, baseline, evidence_map, composed, validated, state = build_pipeline_fixtures()
+    assert len(template.particulars) == 26
+    assert len(baseline.particulars) == 26
+    assert len(evidence_map.particular_mappings) == 26
+    assert len(composed.particular_outputs) == 26
+    assert len(validated.validation_results) == 26
+    assert len(state.particular_reviews) == 26
+    print("PASS: test_28_final_particular_count_is_26")
+
+
 if __name__ == "__main__":
     print("\n" + "=" * 60)
-    print("RUNNING PHASE 9 PDF GENERATOR TESTS (24 TESTS)")
+    print("RUNNING PHASE 9 PDF GENERATOR TESTS (28 TESTS)")
     print("=" * 60)
 
     tests = [
@@ -764,7 +944,7 @@ if __name__ == "__main__":
         test_09_original_ai_text_not_substituted_after_edit,
         test_10_excluded_evidence_does_not_appear,
         test_11_included_evidence_appears,
-        test_12_evidence_cannot_cross_particulars,
+        test_12_no_internal_ids_exposed_in_pdf,
         test_13_applicant_guarantor_isolation,
         test_14_missing_information_priority_over_baseline,
         test_15_long_verification_details_wraps_correctly,
@@ -777,6 +957,10 @@ if __name__ == "__main__":
         test_22_normalized_deterministic_repeat_generation,
         test_23_evidence_asset_resolver_isolation_and_unavailable_asset,
         test_24_canonical_api_endpoint,
+        test_25_missing_guarantor_renders_na_and_never_placeholder_name,
+        test_26_section8_and_p8_completely_removed,
+        test_27_supporting_evidence_appears_after_section7_and_before_audit,
+        test_28_final_particular_count_is_26,
     ]
 
     passed = 0

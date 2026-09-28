@@ -43,7 +43,6 @@ SECTION_TITLES = {
     "5": "Bank Statement Verification",
     "6": "Track Record & Criminal Antecedents",
     "7": "Dealer & Invoice/RC Book Verification for Vehicles/Machineries",
-    "8": "General Information & Opinion",
 }
 
 
@@ -374,53 +373,145 @@ def render_baseline_report(
                         g_summary_lines.append(f"Address: {g.address}")
                     if g.mobile:
                         g_summary_lines.append(f"Mobile: {g.mobile}")
+                    if not g_summary_lines:
+                        g_summary_lines.append("NA")
 
                 elif pid == "P2":
                     formatted_g_facts = {"residence_address": g.address}
                     if g.address:
                         g_summary_lines.append(f"Address: {g.address}")
+                    else:
+                        g_summary_lines.append("NA")
+
+                elif pid in ("P2A", "P2B", "P2C"):
+                    g_findings = [f for f in context.findings if f.particular_id == pid and f.party_id == g.party_id]
+                    if g_findings:
+                        for gf in g_findings:
+                            g_summary_lines.append(gf.answer)
+                    else:
+                        g_summary_lines.append("NA")
 
                 elif pid == "P2D":
-                    formatted_g_facts = {"residence_status": "Self-owned / Family"}
-                    g_summary_lines.append("Status of Residence: Self-owned / Family")
+                    g_fact_item = next((gf for gf in (pfact.guarantor_facts if pfact else []) if gf.get("party_id") == g.party_id), {})
+                    g_status = g_fact_item.get("residence_status")
+                    if g_status:
+                        formatted_g_facts = {"residence_status": g_status}
+                        g_summary_lines.append(f"Status of Residence: {g_status}")
+                    else:
+                        g_summary_lines.append("NA")
 
                 elif pid == "P2E":
                     formatted_g_facts = {"masked_aadhaar": g.masked_aadhaar}
                     if g.masked_aadhaar:
                         g_summary_lines.append(f"Aadhaar No.: {g.masked_aadhaar}")
+                    else:
+                        g_summary_lines.append("NA")
+
+                elif pid == "P3":
+                    # Section 3 KYC: Display verified info if available; otherwise strictly NA
+                    g_findings = [f for f in context.findings if f.particular_id == "P3" and f.party_id == g.party_id]
+                    g_has_kyc_docs = any(
+                        d.party_id == g.party_id and d.document_type in ("aadhaar", "pan")
+                        for d in context.documents
+                    )
+                    if g_findings or g_has_kyc_docs:
+                        if g.pan_number and g.pan_number != "N/A":
+                            g_summary_lines.append(f"PAN: {g.pan_number}")
+                        if g.masked_aadhaar and g.masked_aadhaar != "N/A":
+                            g_summary_lines.append(f"Aadhaar: {g.masked_aadhaar}")
+                        for gf in g_findings:
+                            g_summary_lines.append(gf.answer)
+                    if not g_summary_lines:
+                        g_summary_lines.append("NA")
 
                 elif pid == "P4":
-                    formatted_g_facts = {
-                        "gross_income": g.formatted_income,
-                        "occupation": g.occupation,
-                        "years_in_occupation": g.years_in_occupation,
-                    }
-                    if g.formatted_income:
-                        g_summary_lines.append(f"Declared Income: {g.formatted_income}")
-                    if g.occupation:
-                        g_summary_lines.append(f"Occupation: {g.occupation}")
+                    g_income_docs = [
+                        d.original_name or d.file_path for d in context.documents
+                        if (d.party_id == g.party_id or d.party_id == f"joint_applicant:{g.party_id.split(':')[-1]}")
+                        and d.document_type in ("salary_slip", "form_16", "itr", "income_cert")
+                    ]
+                    g_findings = [f for f in context.findings if f.particular_id == "P4" and f.party_id == g.party_id]
+                    if g_income_docs or g_findings:
+                        if g.formatted_income:
+                            g_summary_lines.append(f"Declared Income: {g.formatted_income}")
+                        if g.occupation:
+                            g_summary_lines.append(f"Occupation: {g.occupation}")
+                    if not g_summary_lines:
+                        g_summary_lines.append("NA")
+
+                elif pid == "P4A":
+                    g_income_docs = [
+                        d.original_name or d.file_path for d in context.documents
+                        if (d.party_id == g.party_id or d.party_id == f"joint_applicant:{g.party_id.split(':')[-1]}")
+                        and d.document_type in ("salary_slip", "form_16", "itr", "income_cert")
+                    ]
+                    if g_income_docs:
+                        g_summary_lines.append(f"Documents Seen: {', '.join(g_income_docs)}")
+                    else:
+                        g_summary_lines.append("NA")
+
+                elif pid == "P4B":
+                    g_findings = [f for f in context.findings if f.particular_id == "P4B" and f.party_id == g.party_id]
+                    if g_findings:
+                        for gf in g_findings:
+                            g_summary_lines.append(gf.answer)
+                    else:
+                        g_summary_lines.append("NA")
+
+                elif pid == "P4C":
+                    g_fact_item = next((gf for gf in (pfact.guarantor_facts if pfact else []) if gf.get("party_id") == g.party_id), {})
+                    emp = g_fact_item.get("employer_name")
+                    if emp:
+                        g_summary_lines.append(f"Employer: {emp}")
+                    else:
+                        g_summary_lines.append("NA")
 
                 elif pid == "P4D":
-                    formatted_g_facts = {
-                        "occupation": g.occupation,
-                        "income": g.formatted_income,
-                        "years_in_occupation": f"{g.years_in_occupation} years" if g.years_in_occupation is not None else None,
-                    }
-                    if g.occupation:
-                        g_summary_lines.append(f"Designation: {g.occupation}")
-                    if g.formatted_income:
-                        g_summary_lines.append(f"Income: {g.formatted_income}")
-                    if g.years_in_occupation is not None:
-                        g_summary_lines.append(f"Experience: {g.years_in_occupation} years")
+                    g_income_docs = [
+                        d.original_name or d.file_path for d in context.documents
+                        if (d.party_id == g.party_id or d.party_id == f"joint_applicant:{g.party_id.split(':')[-1]}")
+                        and d.document_type in ("salary_slip", "form_16", "itr", "income_cert")
+                    ]
+                    g_findings = [f for f in context.findings if f.particular_id == "P4D" and f.party_id == g.party_id]
+                    if g_income_docs or g_findings:
+                        if g.occupation:
+                            g_summary_lines.append(f"Designation: {g.occupation}")
+                        if g.formatted_income:
+                            g_summary_lines.append(f"Income: {g.formatted_income}")
+                        if g.years_in_occupation is not None:
+                            g_summary_lines.append(f"Experience: {g.years_in_occupation} years")
+                    if not g_summary_lines:
+                        g_summary_lines.append("NA")
+
+                elif pid in ("P5", "P5A", "P5B", "P5C"):
+                    g_bank_docs = [
+                        d.original_name or d.file_path for d in context.documents
+                        if (d.party_id == g.party_id or d.party_id == f"joint_applicant:{g.party_id.split(':')[-1]}")
+                        and d.document_type == "bank_statement"
+                    ]
+                    g_findings = [f for f in context.findings if f.particular_id == pid and f.party_id == g.party_id]
+                    if g_bank_docs:
+                        g_summary_lines.append(f"Bank Statements: {len(g_bank_docs)} verified")
+                    for gf in g_findings:
+                        g_summary_lines.append(gf.answer)
+                    if not g_summary_lines:
+                        g_summary_lines.append("NA")
+
+                elif pid == "P6":
+                    g_findings = [f for f in context.findings if f.particular_id == "P6" and f.party_id == g.party_id]
+                    if g_findings:
+                        for gf in g_findings:
+                            g_summary_lines.append(gf.answer)
+                    else:
+                        g_summary_lines.append("NA")
 
                 else:
-                    formatted_g_facts = {
-                        "party_id": g.party_id,
-                        "name": g.name,
-                        "party_type": g.party_type,
-                    }
-                    if g.name:
-                        g_summary_lines.append(f"{g.party_type.title()}: {g.name}")
+                    g_findings = [f for f in context.findings if f.particular_id == pid and f.party_id == g.party_id]
+                    if g_findings:
+                        for gf in g_findings:
+                            g_summary_lines.append(gf.answer)
+                    else:
+                        g_summary_lines.append("NA")
 
                 guarantor_verifications.append(
                     RenderedVerificationDetail(
@@ -589,23 +680,6 @@ def render_baseline_report(
                     shared_summary_lines.append(f"Insurance Policy Details: {'; '.join(ins)}")
                 else:
                     shared_summary_lines.append("Comprehensive vehicle insurance policy validity pending confirmation.")
-
-            # ── SECTION 8 (GENERAL OPINION) ──
-            elif pid == "P8":
-                amt = format_currency(shared_facts.get("loan_amount"))
-                ltype = shared_facts.get("loan_type")
-                mkt_val = format_currency(shared_facts.get("property_market_value"))
-                sec_val = format_currency(shared_facts.get("property_security_value"))
-                formatted_shared_facts = {
-                    "loan_amount": amt,
-                    "loan_type": ltype,
-                    "market_value": mkt_val,
-                    "loan_security_value": sec_val,
-                }
-                shared_summary_lines.append(f"Facility: {ltype} of {amt}")
-                if mkt_val:
-                    shared_summary_lines.append(f"Collateral Market Value: {mkt_val} (Security Value: {sec_val})")
-                shared_summary_lines.append("Field Re-Verification Facts synthesized for scrutiny.")
 
             else:
                 formatted_shared_facts = dict(shared_facts)

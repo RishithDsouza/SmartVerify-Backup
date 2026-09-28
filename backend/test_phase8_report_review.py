@@ -97,7 +97,7 @@ def test_1_review_state_creation():
     assert state.template_version == "v1.0"
     assert state.input_hash == context.input_hash
     assert state.revision == 1
-    assert len(state.particular_reviews) == 27
+    assert len(state.particular_reviews) == 26
     print("PASS: test_1_review_state_creation")
 
 

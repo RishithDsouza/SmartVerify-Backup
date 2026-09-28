@@ -403,12 +403,6 @@ def create_mock_report_context(missing_p2a: bool = False) -> ReportContext:
             display_order=26, shared_facts={"insurance_details": "Comprehensive Policy Valid until 2027"},
             status="available", missing_fields=[],
         ),
-        "P8": ParticularContextFact(
-            particular_id="P8", section="8", title="General Information / Opinion", parent_id=None,
-            applicant_supported=True, guarantor_supported=True, data_type="narrative", required=True, narrative_allowed=True,
-            display_order=27, shared_facts={"officer_recommendation": "Positive"},
-            status="available", missing_fields=[],
-        ),
     }
 
     return ReportContext(
@@ -514,9 +508,9 @@ def run_phase6_tests():
     assert report.application_id == 1
     assert report.template_key == "standard_reverification"
     assert report.template_version == "v1.0"
-    assert len(report.particular_outputs) == 27
+    assert len(report.particular_outputs) == 26
     assert report.input_hash == context.input_hash
-    print("  -> PASSED: Complete ComposedReport produced with all 27 Particular outputs.")
+    print("  -> PASSED: Complete ComposedReport produced with all 26 Particular outputs.")
     results["2_valid_input_produces_report"] = "PASSED"
 
     # ─────────────────────────────────────────────────────────────────
@@ -679,7 +673,7 @@ def run_phase6_tests():
     reconstructed = ComposedReport.model_validate(serialized)
     assert reconstructed.application_id == report.application_id
     assert reconstructed.composer_version == COMPOSER_VERSION
-    assert len(reconstructed.particular_outputs) == 27
+    assert len(reconstructed.particular_outputs) == 26
     assert reconstructed.get_particular("P2A").text == report.get_particular("P2A").text
     print("  -> PASSED: ComposedReport serializes and deserializes losslessly.")
     results["15_lossless_serialization"] = "PASSED"

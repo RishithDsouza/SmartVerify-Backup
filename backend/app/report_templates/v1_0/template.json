@@ -414,20 +414,6 @@
       "evidence_category": "rc_evidence",
       "display_order": 26,
       "description": "Insurance company name, policy number, coverage type (Comprehensive/Third Party), and validity expiry date."
-    },
-    {
-      "id": "P8",
-      "section": "8",
-      "title": "General Information / Opinion",
-      "parent_id": null,
-      "applicant_supported": true,
-      "guarantor_supported": true,
-      "data_type": "narrative",
-      "required": true,
-      "narrative_allowed": true,
-      "evidence_category": "other_relevant_evidence",
-      "display_order": 27,
-      "description": "Holistic field officer assessment and synthesis of borrower suitability, integrity, and creditworthiness."
     }
   ],
   "footer": {

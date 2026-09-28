@@ -484,20 +484,6 @@ PARTICULARS_LIST = [
         display_order=26,
         description="Insurance company name, policy number, coverage type (Comprehensive/Third Party), and validity expiry date.",
     ),
-    ParticularItem(
-        id="P8",
-        section="8",
-        title="General Information / Opinion",
-        parent_id=None,
-        applicant_supported=True,
-        guarantor_supported=True,
-        data_type="narrative",
-        required=True,
-        narrative_allowed=True,
-        evidence_category="other_relevant_evidence",
-        display_order=27,
-        description="Holistic field officer assessment and synthesis of borrower suitability, integrity, and creditworthiness.",
-    ),
 ]
 
 TEMPLATE_V1_0 = ReportTemplate(

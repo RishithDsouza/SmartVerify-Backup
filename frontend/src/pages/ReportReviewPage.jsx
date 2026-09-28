@@ -340,13 +340,13 @@ export default function ReportReviewPage() {
 
       {/* ── Main Two-Column Layout ─────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: 27 Particulars List & Editor (7 cols) */}
+        {/* Left Column: Particulars List & Editor (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-primary-700" />
-                Report Particulars (27 Items)
+                Report Particulars ({Object.keys(reviewState.particular_reviews || {}).length} Items)
               </h2>
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-slate-500">Filter:</span>

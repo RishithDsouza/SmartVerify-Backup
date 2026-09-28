@@ -316,8 +316,8 @@ def build_report_context(
         }
 
     record_fact("property.property_type", prop_dict.get("property_type"), "property_details", prop_source_id, ["P2D"])
-    record_fact("property.market_value", prop_dict.get("market_value"), "property_details", prop_source_id, ["P8"])
-    record_fact("property.security_value", prop_dict.get("loan_security_value"), "property_details", prop_source_id, ["P8"])
+    record_fact("property.market_value", prop_dict.get("market_value"), "property_details", prop_source_id, [])
+    record_fact("property.security_value", prop_dict.get("loan_security_value"), "property_details", prop_source_id, [])
 
     # ─────────────────────────────────────────────────────────────────
     # 6. Application Findings Normalization
@@ -594,15 +594,6 @@ def build_report_context(
             shared = {
                 "insurance_details_validity": [f.answer for f in p7b3_findings] if p7b3_findings else [],
                 "findings": [f.model_dump() for f in p7b3_findings],
-            }
-
-        elif pid == "P8":
-            shared = {
-                "loan_amount": app.loan_amount,
-                "loan_type": app.loan_type,
-                "branch": app.branch,
-                "property_market_value": prop_dict.get("market_value"),
-                "property_security_value": prop_dict.get("loan_security_value"),
             }
 
         is_missing = bool(missing_fields)

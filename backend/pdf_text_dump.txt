@@ -1,0 +1,296 @@
+
+--- PAGE 1 ---
+SMARTVERIFY
+ AI LOAN VERIFICATION SYSTEM
+ BACKGROUND INFORMATION / RE-VERIFICATION REPORT
+ Application ID:
+APP-000006
+Loan Type:
+Vehicle Loan
+Applicant Name:
+Sunil Kumar
+Loan Amount:
+Rs. 8,50,000.00
+Guarantor(s):
+Arun Kumar
+Branch:
+Mangalore Main Branch
+Report Revision:
+Rev #1 (Audit Verified)
+Report Date:
+2026-09-26T12:00:00Z
+Sl. No.
+Particulars
+Applicant
+Guarantor(s)
+SECTION 1: BORROWER & GUARANTOR IDENTIFICATION
+1.
+Name and Address
+Full legal name, father's name, present residential address,
+and permanent address.
+Sunil Kumar | Father: Kumar Kumar | Address: 24 MG Road, Hampankatta,
+Mangalore, Karnataka - 575001
+Guarantor (Brother): Arun Kumar, Address: 18 K S Rao Road, Mangalore, Karnataka
+- 575001
+SECTION 2: RESIDENCE VERIFICATION
+2.
+Residence
+Physical verification of residential premises, occupancy
+confirmation, and Aadhaar linkage.
+Residential Address: 24 MG Road, Hampankatta, Mangalore, Karnataka - 575001;
+Tenure/Type: Residential
+Address: 18 K S Rao Road, Mangalore, Karnataka - 575001
+a)
+    Whether address of residence/unit is seen and
+confirmed through physical visit - Observations
+Verification observations confirmed from submitted documents and verified findings.
+NA
+b)
+    Name of official/person who visited - Date of
+visit
+Visiting Officer: Demo Verification Officer
+Visit Date: 20-09-2026
+Visit Time: 11:30 AM
+NA
+NA
+c)
+    If no, reason for not physically visiting
+Verification observations confirmed from submitted documents and verified findings.
+NA
+d)
+    Status of residence
+Residential Status: Residential
+NA
+e)
+    Aadhaar No.
+Aadhaar: XXXXXXXX9999
+Aadhaar: XXXXXXXX8888
+SECTION 3: KYC & IDENTITY SCRUTINY
+3.
+KYC Document Re-verification
+Officially valid KYC documents: Aadhaar Card, PAN Card, DL
+No., and Government portal verification status/details.
+PAN: ABCDE1234F; Aadhaar: XXXXXXXX9999; UIDAI Status: VERIFIED;
+PAN-Aadhaar Link: VERIFIED
+NA
+SECTION 4: INCOME & EMPLOYMENT VERIFICATION
+4.
+Income
+Substantiation of borrower and guarantor income, employment
+stability, and document genuineness.
+Income Documents Verified: form_16, salary_slip
+Declared Income: Rs. 65,000.00
+Occupation: Senior Technician
+NA
+a)
+    Documents seen
+Documents Seen: form_16, salary_slip
+NA
+b)
+    Pertains to year - Remarks on genuineness
+Verification observations confirmed from submitted documents and verified findings.
+NA
+CONFIDENTIAL - INTERNAL BANKING USE
+SmartVerify | Confidential / For Official Banking Use Only
+Page 1 of 13
+
+--- PAGE 2 ---
+Sl. No.
+Particulars
+Applicant
+Guarantor(s)
+c)
+    If salaried, employer name and address
+Employer: Employer details not recorded
+NA
+d)
+    Designation / Occupation - Income details -
+Years in occupation
+Designation: Senior Technician
+Income: Rs. 65,000.00
+Experience: 7 years
+NA
+SECTION 5: BANKING / FINANCIAL TRACK RECORD
+5.
+Bank Statement
+Re-verification of operative bank accounts, salary/business
+credits, and banking conduct.
+Bank: Bank name not recorded; Branch: Branch not recorded
+NA
+a)
+    Bank & Branch
+Bank: Bank name not recorded; Branch: Branch not recorded
+NA
+b)
+    Type of Account
+Account Classification: Savings / Current
+NA
+c)
+    Statement examined from/to
+Period Examined: Start date not recorded to End date not recorded
+NA
+SECTION 6: TRACK RECORD & CRIMINAL ANTECEDENTS
+6.
+Remarks on Track Record / Criminal Antecedents
+Market feedback, local credit reputation, track record, and
+adverse legal/criminal database check findings.
+Verification observations confirmed from submitted documents and verified findings.
+NA
+SECTION 7: VEHICLE / COLLATERAL VERIFICATION
+7.
+Dealer & Invoice/RC Book Verification for
+Vehicles/Machineries
+Collateral and asset verification for vehicle, equipment, or
+machinery loan applications.
+Collateral: Vehicle/Machinery collateral verification
+NA
+a)
+    For New Vehicles/Machineries
+New Vehicle/Machinery verification dossier
+NA
+i)
+      Dealer/Sub-dealer name/address
+Dealership: Dealer details not recorded
+NA
+ii)
+      Genuineness of Invoice/Advance Payment
+Receipts
+Verification observations confirmed from submitted documents and verified findings.
+NA
+b)
+    For Old/Used Vehicles/Machineries
+Used/Pre-owned Vehicle/Machinery verification dossier
+NA
+i)
+      Correctness of RC Book No./Machinery No.
+RC / Machinery Serial: RC details verified against portal records
+NA
+ii)
+      Charge noted details in RC
+Hypothecation / Charge Status: No prior encumbrance recorded
+NA
+iii)
+      Insurance details & validity
+Insurance Coverage: Insurance policy verification details
+NA
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 2 of 13
+
+--- PAGE 3 ---
+SUPPORTING EVIDENCE
+ Verified Document Artifacts & Government Portal Verification Screenshots
+ 
+[APPLICANT]   Government Verification - Aadhaar  |  Status: VERIFIED
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 3 of 13
+
+--- PAGE 4 ---
+[APPLICANT]   Government Verification - Aadhaar  |  Status: VERIFIED
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 4 of 13
+
+--- PAGE 5 ---
+[APPLICANT]   KYC Document - PAN  |  Status: available
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 5 of 13
+
+--- PAGE 6 ---
+[APPLICANT]   KYC Document - Aadhaar  |  Status: available
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 6 of 13
+
+--- PAGE 7 ---
+[APPLICANT]   Residence Verification - Physical Site Photograph  |  Status: available
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 7 of 13
+
+--- PAGE 8 ---
+[APPLICANT]   Income Document - Salary Slip  |  Status: available
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 8 of 13
+
+--- PAGE 9 ---
+[APPLICANT]   Income Document - Form 16  |  Status: available
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 9 of 13
+
+--- PAGE 10 ---
+[APPLICANT]   Bank Document - Bank Statement  |  Status: available
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 10 of 13
+
+--- PAGE 11 ---
+[APPLICANT]   Vehicle Document - RC  |  Status: available
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 11 of 13
+
+--- PAGE 12 ---
+[APPLICANT]   Vehicle Document - Invoice  |  Status: available
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 12 of 13
+
+--- PAGE 13 ---
+REPORT REVIEW STATUS & STATUTORY AUDIT CERTIFICATION
+Validation Status:
+VALID
+Report Revision:
+Rev #1 (Approved Final)
+Cryptographic Input Hash:
+36c006019346506cd11e1d29...
+Generation Framework:
+SmartVerify Rule Engine (Phase 10 Institutional)
+Investigating Official
+Name: Officer Rajesh Sharma
+Designation: Verification Field Officer
+Date: 2026-09-26T
+Remarks: Physical/Field Observations Verified
+Branch Head Scrutiny & Acceptance
+Name: ________________________
+Designation: Branch Manager / Head
+Date: ________________________
+Remarks: Scrutinized & Recommended
+Automated Quality Assurance
+System: SmartVerify Rule Platform
+Version: Template v1.0 / Phase 10
+Date: 2026-09-26T
+Integrity: Cryptographically Audited
+ Confidential Banking Document - Strictly for Internal Credit Assessment & Re-Verification Use Only
+ 
+CONFIDENTIAL - INTERNAL BANKING USE
+SMARTVERIFY -- AI LOAN RE-VERIFICATION REPORT
+CONFIDENTIAL INTERNAL BANKING DOCUMENT
+SmartVerify | Confidential / For Official Banking Use Only
+Page 13 of 13

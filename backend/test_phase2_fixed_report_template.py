@@ -47,8 +47,7 @@ def test_phase2_report_template():
         "P4", "P4A", "P4B", "P4C", "P4D",
         "P5", "P5A", "P5B", "P5C",
         "P6",
-        "P7", "P7A", "P7A1", "P7A2", "P7B", "P7B1", "P7B2", "P7B3",
-        "P8"
+        "P7", "P7A", "P7A1", "P7A2", "P7B", "P7B1", "P7B2", "P7B3"
     ]
 
     actual_ids = [p.id for p in template.particulars]
@@ -108,7 +107,6 @@ def test_phase2_report_template():
         "P7B1": "P7B",
         "P7B2": "P7B",
         "P7B3": "P7B",
-        "P8": None,
     }
 
     for item in template.particulars:
@@ -129,11 +127,11 @@ def test_phase2_report_template():
     # ─────────────────────────────────────────────────────────────────
     # Test 5: Section Coverage (Sections 1 through 8)
     # ─────────────────────────────────────────────────────────────────
-    print("\n[Test 5] Testing Required Sections (1 through 8)...")
+    print("\n[Test 5] Testing Required Sections (1 through 7)...")
     sections_present = set(p.section for p in template.particulars)
-    expected_sections = {"1", "2", "3", "4", "5", "6", "7", "8"}
+    expected_sections = {"1", "2", "3", "4", "5", "6", "7"}
     assert sections_present == expected_sections, f"Sections mismatch: {sections_present} vs {expected_sections}"
-    print(f"  -> PASSED: All 8 reference report sections exist in the template.")
+    print(f"  -> PASSED: All 7 reference report sections exist in the template.")
 
     # ─────────────────────────────────────────────────────────────────
     # Test 6: Applicant & Guarantor Applicability Metadata
@@ -142,8 +140,8 @@ def test_phase2_report_template():
     for p in template.particulars:
         assert isinstance(p.applicant_supported, bool)
         assert isinstance(p.guarantor_supported, bool)
-        # Verify general sections (P1-P6, P8) support both applicant and guarantor
-        if p.section in ["1", "2", "3", "4", "5", "6", "8"]:
+        # Verify general sections (P1-P6) support both applicant and guarantor
+        if p.section in ["1", "2", "3", "4", "5", "6"]:
             assert p.applicant_supported is True
             assert p.guarantor_supported is True
         # Verify vehicle/machinery collateral section (P7) applies to applicant/asset
@@ -158,8 +156,8 @@ def test_phase2_report_template():
     print("\n[Test 7] Testing Controlled Narrative Allowance Flags...")
     # Narrative allowed should only be True on specific qualitative / observation fields:
     # P2A (Observations), P2C (Reason if not visited), P4B (Remarks on genuineness),
-    # P6 (Track Record / Criminal Antecedents), P7A2 (Genuineness of invoice), P8 (General opinion)
-    expected_narrative_ids = {"P2A", "P2C", "P4B", "P6", "P7A2", "P8"}
+    # P6 (Track Record / Criminal Antecedents), P7A2 (Genuineness of invoice)
+    expected_narrative_ids = {"P2A", "P2C", "P4B", "P6", "P7A2"}
     actual_narrative_ids = set(p.id for p in template.particulars if p.narrative_allowed)
     assert actual_narrative_ids == expected_narrative_ids, (
         f"Narrative allowed mismatch: got {actual_narrative_ids}, expected {expected_narrative_ids}"

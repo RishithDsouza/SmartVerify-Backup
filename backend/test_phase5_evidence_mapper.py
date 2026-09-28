@@ -421,8 +421,8 @@ def run_phase5_tests():
     assert evidence_map.template_version == "v1.0"
     assert evidence_map.application_id == 1
     assert evidence_map.input_hash == "test_sha256_input_hash_deterministic_abc123"
-    assert len(evidence_map.particular_mappings) == 27
-    print("  -> PASSED: Valid EvidenceMap generated with all 27 template Particular mappings.")
+    assert len(evidence_map.particular_mappings) == 26
+    print("  -> PASSED: Valid EvidenceMap generated with all 26 template Particular mappings.")
     results["2_valid_context_produces_map"] = "PASSED"
 
     # ─────────────────────────────────────────────────────────────────
@@ -434,7 +434,7 @@ def run_phase5_tests():
         tmpl_item = template.get_particular_by_id(pid)
         assert tmpl_item is not None
         assert mapping.evidence_category == tmpl_item.evidence_category
-    print("  -> PASSED: All 27 Particular mappings exactly preserve Phase 2 evidence_category values.")
+    print("  -> PASSED: All 26 Particular mappings exactly preserve Phase 2 evidence_category values.")
     results["3_deterministic_categories"] = "PASSED"
 
     # ─────────────────────────────────────────────────────────────────
@@ -623,7 +623,7 @@ def run_phase5_tests():
     for pid, mapping in evidence_map.particular_mappings.items():
         keys = [(ref.source, ref.source_id) for ref in mapping.evidence]
         assert len(keys) == len(set(keys)), f"Duplicate evidence found in particular {pid}!"
-    print("  -> PASSED: All 27 Particular mappings have strictly zero duplicate source references.")
+    print("  -> PASSED: All 26 Particular mappings have strictly zero duplicate source references.")
     results["16_duplicate_suppression"] = "PASSED"
 
     # ─────────────────────────────────────────────────────────────────
@@ -724,7 +724,7 @@ def run_phase5_tests():
     assert reconstructed.application_id == evidence_map.application_id
     assert reconstructed.input_hash == evidence_map.input_hash
     assert reconstructed.total_evidence_count == evidence_map.total_evidence_count
-    assert len(reconstructed.particular_mappings) == 27
+    assert len(reconstructed.particular_mappings) == 26
     print("  -> PASSED: EvidenceMap serializes to JSON and deserializes back losslessly.")
     results["22_lossless_serialization"] = "PASSED"
 

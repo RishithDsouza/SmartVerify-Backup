@@ -63,11 +63,25 @@ def ensure_virtualenv():
 
 
 def ensure_frontend_build(force_rebuild=False):
-    """Ensure that the React frontend is built and ready to be served."""
+    """Ensure that the React frontend is built and up to date."""
     index_html = BUILD_DIR / "index.html"
+    needs_rebuild = force_rebuild or not index_html.is_file()
 
-    if force_rebuild or not index_html.is_file():
-        print("\n[*] Frontend production build missing or rebuild requested.")
+    if not needs_rebuild and index_html.is_file():
+        build_mtime = index_html.stat().st_mtime
+        src_dir = FRONTEND_DIR / "src"
+        public_dir = FRONTEND_DIR / "public"
+        for check_dir in (src_dir, public_dir):
+            if check_dir.is_dir():
+                for f in check_dir.rglob("*"):
+                    if f.is_file() and f.stat().st_mtime > build_mtime:
+                        needs_rebuild = True
+                        break
+            if needs_rebuild:
+                break
+
+    if needs_rebuild:
+        print("\n[*] Frontend production build missing or source files updated.")
         print("[*] Building React frontend (npm run build)...")
 
         npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
@@ -81,7 +95,7 @@ def ensure_frontend_build(force_rebuild=False):
             sys.exit(1)
         print("[+] Frontend build completed successfully.\n")
     else:
-        print("[+] Frontend build found at:", BUILD_DIR)
+        print("[+] Frontend build is up to date at:", BUILD_DIR)
 
 
 def print_banner(host, port, mode="Production (Single Port)"):

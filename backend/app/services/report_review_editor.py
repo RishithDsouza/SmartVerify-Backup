@@ -174,7 +174,7 @@ def create_review_state(
     can_export = (
         validated_report.is_valid
         and len(validated_report.blocking_issues) == 0
-        and len(particular_reviews) == 27
+        and len(particular_reviews) == len(template.particulars)
         and composed_report.input_hash == validated_report.input_hash
     )
 
@@ -369,7 +369,7 @@ def revalidate_review_state(
 
     # Strict PDF export gate evaluation
     has_zero_blocking = len(state.blocking_issues) == 0
-    has_all_27 = len(state.particular_reviews) == 27
+    has_all_particulars = len(state.particular_reviews) == len(template.particulars)
     hashes_match = state.input_hash == context.input_hash
     templates_match = (
         state.template_key == template.template_key
@@ -378,7 +378,7 @@ def revalidate_review_state(
     overall_valid = state.validation_status in ("VALID", "VALID_WITH_WARNINGS")
 
     state.can_export_pdf = bool(
-        overall_valid and has_zero_blocking and has_all_27 and hashes_match and templates_match
+        overall_valid and has_zero_blocking and has_all_particulars and hashes_match and templates_match
     )
 
     state.updated_at = datetime.utcnow().isoformat()

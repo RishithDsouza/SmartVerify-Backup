@@ -34,7 +34,7 @@ PROMPT_VERSION = "v1.0"
 COMPOSER_VERSION = "v1.0.0"
 
 # Particulars designated for controlled AI narrative composition
-NARRATIVE_PARTICULAR_IDS = {"P2A", "P2C", "P4B", "P6", "P7A2", "P8"}
+NARRATIVE_PARTICULAR_IDS = {"P2A", "P2C", "P4B", "P6", "P7A2"}
 
 SYSTEM_PROMPT = """You are the SmartVerify AI Report Composer, an internal banking re-verification reporting engine.
 Your sole task is to generate professional, factual verification narrative statements for the requested report Particular.
@@ -269,7 +269,7 @@ def compose_report(
     """
     Composes the complete application report.
     For non-narrative particulars, preserves deterministic rendering without AI.
-    For narrative particulars (P2A, P2C, P4B, P6, P7A2, P8), performs controlled AI wording
+    For narrative particulars (P2A, P2C, P4B, P6, P7A2), performs controlled AI wording
     using verified facts and approved evidence references.
     """
     if template is None:
