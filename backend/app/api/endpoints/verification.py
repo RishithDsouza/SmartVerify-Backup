@@ -21,7 +21,7 @@ from app.core.config import settings
 from app.services.nlp_service import extract_information
 from app.services.verification_engine import VerificationEngine
 from app.services.fraud_detection import FraudDetector
-from app.services.report_service import generate_report
+from app.services.verification_normalizer import normalize_and_persist_verification_findings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -95,12 +95,17 @@ def run_verification(
         app.applicant_name = extracted_info["applicant_name"]
     db.commit()
 
-    # ── 7. PDF report ─────────────────────────────────────────────────
-    try:
-        pdf_path = generate_report(application_id=app.id, db=db)
-    except Exception as e:
-        logger.error(f"PDF generation failed: {e}")
-        pdf_path = None
+    # ── 7. Normalize findings bridge ──────────────────────────────────
+    normalize_and_persist_verification_findings(
+        application_id=application_id,
+        db=db,
+        extracted_info=extracted_info,
+        verification_details=verification_result,
+        fraud_analysis=fraud_result,
+        agent_trace=None,
+        documents=docs,
+    )
+    pdf_path = None
 
     # ── 8. Save / update report record ───────────────────────────────
     report = _get_or_create_report(application_id, db)
@@ -174,19 +179,27 @@ def run_agentic_verification(
     gov_record = {}
     if gov_ver:
         gov_record = {
-            # V2: unified PAN-Aadhaar Link status
+            # Canonical model fields
             "pan_aadhaar_link_status": gov_ver.pan_aadhaar_link_status,
-            # V3: New Aadhaar Validity status
             "aadhaar_validity_status": gov_ver.aadhaar_validity_status,
-            "aadhaar_screenshot_path": gov_ver.aadhaar_screenshot_path,
-            # Backward compat fields (may be None for new records)
-            "aadhaar_status": gov_ver.aadhaar_status,
-            "pan_status": gov_ver.pan_status,
             "tax_receipt_status": gov_ver.tax_receipt_status,
+            "aadhaar_screenshot_path": gov_ver.aadhaar_screenshot_path,
+            "screenshot_path": gov_ver.screenshot_path,
+            "verification_screenshots": gov_ver.verification_screenshots,
             "officer_name": gov_ver.officer_name,
             "timestamp": gov_ver.timestamp,
             "remarks": gov_ver.remarks,
-            "screenshot_path": gov_ver.screenshot_path,
+            # Backward compatibility aliases mapped to current model fields
+            "aadhaar_status": gov_ver.aadhaar_validity_status,
+            "pan_status": gov_ver.pan_aadhaar_link_status,
+            "pan_aadhaar_status": gov_ver.pan_aadhaar_link_status,
+            "tax_status": gov_ver.tax_receipt_status,
+            "tax_receipt": gov_ver.tax_receipt_status,
+            "screenshot_uploaded": bool(
+                gov_ver.aadhaar_screenshot_path
+                or gov_ver.screenshot_path
+                or gov_ver.verification_screenshots
+            ),
         }
 
     try:
@@ -216,14 +229,9 @@ def run_agentic_verification(
         app.applicant_name = extracted_info["applicant_name"]
     db.commit()
 
-    # ── Fallback: if the crew failed to produce a PDF, generate one
-    #    deterministically so the user always has a downloadable report. ──
-    if not pdf_path:
-        try:
-            pdf_path = generate_report(application_id=application_id, db=db)
-        except Exception as e:
-            logger.error(f"Fallback PDF generation failed: {e}")
-            pdf_path = None
+    # ── Decouple from legacy PDF generator ────────────────────────────
+    # Downstream report review and publication PDF are generated on-demand
+    pdf_path = None
 
     # ── Save / update report record ───────────────────────────────────
     report = _get_or_create_report(application_id, db)
@@ -252,6 +260,17 @@ def run_agentic_verification(
     
     db.commit()
     db.refresh(report)
+
+    # ── Normalize findings bridge ─────────────────────────────────────
+    normalize_and_persist_verification_findings(
+        application_id=application_id,
+        db=db,
+        extracted_info=extracted_info,
+        verification_details=verification_result,
+        fraud_analysis=fraud_result,
+        agent_trace=report.agent_trace,
+        documents=docs,
+    )
 
     # ── Store Application in Vector Database for Similarity Search (Phase 3) ──
     try:

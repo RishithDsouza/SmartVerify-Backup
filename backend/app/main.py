@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.logging_config import setup_logging
-from app.api.endpoints import auth, documents, verification, applications, dashboard, reports
+from app.api.endpoints import auth, documents, verification, applications, dashboard, reports, gov_screenshots
 from app.db.database import engine, Base
 
 setup_logging()
@@ -56,6 +56,8 @@ app.include_router(dashboard.router,    prefix="/dashboard",    tags=["Dashboard
 app.include_router(dashboard.router,    prefix="/api/dashboard",tags=["Dashboard"])
 app.include_router(reports.router,      prefix="/report",       tags=["Reports"])
 app.include_router(reports.router,      prefix="/api/reports",  tags=["Reports"])
+app.include_router(gov_screenshots.router, prefix="/gov-screenshots", tags=["Government Screenshots"])
+app.include_router(gov_screenshots.router, prefix="/api/gov-screenshots", tags=["Government Screenshots"])
 
 
 @app.on_event("startup")
@@ -129,6 +131,8 @@ if FRONTEND_BUILD_DIR.is_dir() and (FRONTEND_BUILD_DIR / "index.html").is_file()
             or path == "/auth"
             or path.startswith("/documents/")
             or path == "/documents"
+            or path.startswith("/gov-screenshots/")
+            or path == "/gov-screenshots"
             or path.startswith("/verify/")
             or path == "/verify"
             or path.startswith("/applications/")

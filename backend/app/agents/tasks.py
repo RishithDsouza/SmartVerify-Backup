@@ -16,7 +16,115 @@ Pipeline:
 """
 
 import json
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field
 from crewai import Task
+
+
+class ComplianceReportOutput(BaseModel):
+    application_id: int
+    final_status: str
+    verification_score: float = 0.0
+    risk_score: float = 0.0
+    fraud_flag: bool = False
+    overall_ai_confidence: Optional[float] = 0.0
+    extracted_info: Dict[str, Any] = Field(default_factory=dict)
+    verification_details: Dict[str, Any] = Field(default_factory=dict)
+    fraud_analysis: Dict[str, Any] = Field(default_factory=dict)
+    agent_findings: Dict[str, Any] = Field(default_factory=dict)
+    recommendation: str = ""
+    human_review: str = ""
+    summary: str = ""
+    pdf_path: Optional[str] = None
+
+
+LOAN_TYPE_DOCUMENT_RULES: Dict[str, Dict[str, Any]] = {
+    "vehicle loan": {
+        "required_identity": ["aadhaar", "pan"],
+        "required_income": ["salary_slip", "income_cert", "form_16", "itr", "bank_statement"],
+        "required_collateral": ["vehicle_document", "invoice"],
+        "supporting": ["residence_proof", "site_front_view", "house_photograph"],
+        "checklist_text": (
+            "Required document categories for Vehicle Loan:\n"
+            "  1. Identity proof: Aadhaar or PAN (or Driving Licence)\n"
+            "  2. Income/financial proof: At least one of salary_slip, income_cert, form_16, ITR, or bank_statement\n"
+            "  3. Vehicle / collateral documents: vehicle_document (RC) or vehicle purchase invoice\n"
+            "  4. Supporting / site evidence: residence_proof and site_front_view (treated as supporting site/residence photographic evidence, not generic text documents)"
+        ),
+    },
+    "home loan": {
+        "required_identity": ["aadhaar", "pan"],
+        "required_income": ["salary_slip", "income_cert", "form_16", "itr", "bank_statement"],
+        "required_collateral": ["sale_deed", "tax_receipt", "encumbrance_cert", "property_image"],
+        "supporting": ["residence_proof", "site_front_view", "house_photograph"],
+        "checklist_text": (
+            "Required document categories for Home Loan:\n"
+            "  1. Identity proof: Aadhaar and PAN\n"
+            "  2. Income proof: At least one of salary_slip, income_cert, form_16, ITR, or bank_statement\n"
+            "  3. Property / collateral documents: sale_deed, tax_receipt, encumbrance_cert, or property_image\n"
+            "  4. Supporting evidence: residence_proof and site_front_view (supporting site photographic evidence)"
+        ),
+    },
+    "personal loan": {
+        "required_identity": ["aadhaar", "pan"],
+        "required_income": ["salary_slip", "income_cert", "form_16", "itr", "bank_statement"],
+        "required_collateral": [],
+        "supporting": ["residence_proof"],
+        "checklist_text": (
+            "Required document categories for Personal Loan:\n"
+            "  1. Identity proof: Aadhaar and PAN\n"
+            "  2. Income proof: At least one of salary_slip, income_cert, form_16, ITR, or bank_statement\n"
+            "  3. Supporting evidence: residence_proof"
+        ),
+    },
+    "business loan": {
+        "required_identity": ["pan", "aadhaar"],
+        "required_income": ["bank_statement", "itr", "form_16", "financial_statement"],
+        "required_collateral": ["invoice", "tax_receipt", "property_image"],
+        "supporting": ["residence_proof", "site_front_view"],
+        "checklist_text": (
+            "Required document categories for Business Loan:\n"
+            "  1. Identity proof: PAN and Aadhaar\n"
+            "  2. Financial/income proof: At least one of bank_statement, ITR, or form_16\n"
+            "  3. Business/collateral documents: Registration, invoice, or tax receipt\n"
+            "  4. Supporting evidence: residence_proof or site_front_view"
+        ),
+    },
+    "education loan": {
+        "required_identity": ["aadhaar", "pan"],
+        "required_income": ["salary_slip", "form_16", "itr", "bank_statement"],
+        "required_collateral": [],
+        "supporting": ["residence_proof"],
+        "checklist_text": (
+            "Required document categories for Education Loan:\n"
+            "  1. Identity proof: Aadhaar and PAN\n"
+            "  2. Income proof (co-borrower / parent): At least one of salary_slip, form_16, ITR, or bank_statement\n"
+            "  3. Supporting evidence: residence_proof"
+        ),
+    },
+}
+
+
+def get_loan_document_rules(loan_type: str) -> Dict[str, Any]:
+    """Retrieve loan-type-aware document requirement rules and checklist description."""
+    normalized = (loan_type or "").strip().lower()
+    for key, rules in LOAN_TYPE_DOCUMENT_RULES.items():
+        if key in normalized or normalized in key:
+            return rules
+    # Default fallback for unlisted loan types
+    return {
+        "required_identity": ["aadhaar", "pan"],
+        "required_income": ["salary_slip", "income_cert", "form_16", "itr", "bank_statement"],
+        "required_collateral": [],
+        "supporting": ["residence_proof", "site_front_view"],
+        "checklist_text": (
+            f"Required document categories for {loan_type or 'General Loan'}:\n"
+            "  1. Identity proof: At least one of aadhaar or pan\n"
+            "  2. Income proof: At least one of salary_slip, income_cert, form_16, ITR, or bank_statement\n"
+            "  3. Collateral / asset documents: Any uploaded collateral or asset documents\n"
+            "  4. Supporting evidence: residence_proof or site inspection evidence"
+        ),
+    }
 
 
 def build_tasks(agents: dict, run_context: dict) -> list:
@@ -59,7 +167,7 @@ def build_tasks(agents: dict, run_context: dict) -> list:
     for d in documents:
         raw_json = d.get("structured_data") or "{}"
         try:
-            parsed = json.loads(raw_json)
+            parsed = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
         except Exception:
             parsed = {}
         # Merge (prefer non-null values)
@@ -69,6 +177,8 @@ def build_tasks(agents: dict, run_context: dict) -> list:
         doc_structured_details.append({
             "doc_id": d["id"],
             "document_type": d["document_type"],
+            "file_path": d.get("file_path", ""),
+            "has_structured_data": bool(parsed),
             "structured_data": parsed,
         })
 
@@ -84,16 +194,49 @@ def build_tasks(agents: dict, run_context: dict) -> list:
         [{"document_type": d["document_type"]} for d in documents]
     )
 
-    # ── OCR text summary for quality assessment ──────────────────────────
-    ocr_quality_notes = []
+    # ── Document verification & metadata assessment ───────────────────────
+    VISUAL_EVIDENCE_TYPES = {
+        "site_front_view", "site_side_view", "site_interior", "site_entrance",
+        "property_image", "house_photograph"
+    }
+
+    doc_meta_notes = []
     for d in documents:
+        doc_type = d.get("document_type") or ""
         text = d.get("extracted_text") or ""
-        quality = "good" if len(text) > 50 else ("partial" if len(text) > 5 else "unreadable")
-        ocr_quality_notes.append(
-            f"  - doc_id={d['id']}, type={d['document_type']}, "
-            f"ocr_chars={len(text)}, quality={quality}"
+        raw_json = d.get("structured_data") or "{}"
+        try:
+            parsed_sd = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+        except Exception:
+            parsed_sd = {}
+        has_struct = bool(parsed_sd)
+        is_visual = doc_type in VISUAL_EVIDENCE_TYPES
+
+        if is_visual:
+            doc_quality = "good"
+            ocr_state = "visual_evidence (photographic site/property evidence; text OCR not applicable)"
+        elif has_struct:
+            doc_quality = "good"
+            ocr_state = "verified_structured_data_available (authoritative metadata present in database)"
+        elif len(text) > 50:
+            doc_quality = "good"
+            ocr_state = f"ocr_text_available ({len(text)} chars)"
+        elif len(text) > 5:
+            doc_quality = "partial"
+            ocr_state = f"ocr_partial_text ({len(text)} chars)"
+        else:
+            doc_quality = "partial"
+            ocr_state = "ocr_text_unavailable"
+
+        doc_meta_notes.append(
+            f"  - doc_id={d['id']}, type={doc_type}, file={d.get('original_name', '')}, "
+            f"has_structured_data={has_struct}, ocr_status={ocr_state}, quality={doc_quality}"
         )
-    ocr_quality_str = "\n".join(ocr_quality_notes) or "  (no OCR data)"
+    doc_meta_str = "\n".join(doc_meta_notes) or "  (no documents uploaded)"
+
+    # ── Loan type document rules ──────────────────────────────────────────
+    rules = get_loan_document_rules(loan_type)
+    loan_rules_checklist = rules["checklist_text"]
 
     # ─────────────────────────────────────────────────────────────────────
     # TASK 1 — Document Analyst
@@ -104,12 +247,24 @@ def build_tasks(agents: dict, run_context: dict) -> list:
             f"{applicant_name} (loan amount: ₹{loan_amount}, type: {loan_type}).\n\n"
             "UPLOADED DOCUMENTS:\n"
             f"{doc_list_str}\n\n"
-            "OCR QUALITY ASSESSMENT (pre-extracted):\n"
-            f"{ocr_quality_str}\n\n"
-            "PER-DOCUMENT STRUCTURED DATA (already extracted by OCR+NLP pipeline):\n"
+            "DOCUMENT METADATA & OCR STATUS (authoritative pre-extracted information):\n"
+            f"{doc_meta_str}\n\n"
+            "PER-DOCUMENT STRUCTURED DATA (already extracted and verified by OCR+NLP pipeline):\n"
             f"{doc_structured_str}\n\n"
-            "CRITICAL: You MUST use the document_ocr_tool to extract text for each document using its file_path, "
-            "then compare it with the pre-extracted OCR text to validate quality and detect corruption.\n\n"
+            "LOAN TYPE DOCUMENT REQUIREMENTS:\n"
+            f"{loan_rules_checklist}\n\n"
+            "ANALYSIS RULES & INSTRUCTIONS:\n"
+            "1. DISTINGUISH OCR UNAVAILABILITY FROM DOCUMENT UNREADABILITY:\n"
+            "   - If document_ocr_tool returns NO_TEXT_EXTRACTED or OCR text is unavailable, but authoritative structured_data / verified metadata is present in the database, the document is READABLE and VERIFIED. Do NOT mark it as unreadable or in unreadable_documents.\n"
+            "   - Do NOT fabricate OCR text.\n"
+            "   - A document is ONLY 'unreadable' if the file is genuinely corrupted, blank, or completely illegible with NO verified structured data.\n"
+            "2. PHOTOGRAPHIC / SITE EVIDENCE:\n"
+            "   - site_front_view (and any site/property photos) are visual evidence of the physical property/site inspection, NOT generic text documents. They do not require OCR text and must NOT be marked as unreadable or poor quality.\n"
+            "3. LOAN-TYPE DOCUMENT COMPLETENESS:\n"
+            f"   - Evaluate completeness against the Loan Type Document Requirements for {loan_type}.\n"
+            f"   - For {loan_type}, verify that identity, income, vehicle/collateral, and supporting documents in UPLOADED DOCUMENTS are recognized.\n"
+            "   - Do NOT treat Aadhaar, PAN, income documents (salary_slip, form_16), bank statement, or vehicle documents (vehicle_document/RC, invoice) as missing if they are listed in UPLOADED DOCUMENTS.\n"
+            "   - If all required categories for the loan type are met, set document_status = 'complete'.\n\n"
             "Your task is to analyse the above data and produce a JSON object with this exact shape:\n"
             "{\n"
             '  "document_status": "complete" | "incomplete" | "unreadable",\n'
@@ -128,7 +283,6 @@ def build_tasks(agents: dict, run_context: dict) -> list:
             '    "decision": "<final analytical decision>"\n'
             '  }\n'
             "}\n\n"
-            "Required document types for a home loan are: aadhaar, pan, and at least one income document (salary_slip, income_cert, or form_16).\n"
             "Return ONLY this JSON object, with no extra commentary."
         ),
         expected_output=(
@@ -147,8 +301,7 @@ def build_tasks(agents: dict, run_context: dict) -> list:
             "You have received the Document Analyst's assessment from the previous task.\n\n"
             "Now consume the following Structured JSON that was produced by the earlier pipeline:\n"
             f"{merged_json_str}\n\n"
-            "CRITICAL: You MUST use the information_extraction_tool by passing the combined OCR text to extract structured data independently, "
-            "then validate and merge it with the provided JSON.\n\n"
+            "CRITICAL: If OCR text is available, you may use information_extraction_tool. If raw OCR text is unavailable, rely directly on the authoritative Structured JSON provided above without fabricating OCR text.\n\n"
             "Application defaults (use if field is missing):\n"
             f"  - applicant_name: {applicant_name}\n"
             f"  - loan_amount: {loan_amount}\n\n"
@@ -215,7 +368,8 @@ def build_tasks(agents: dict, run_context: dict) -> list:
             "2. Monthly income must be present and ≥ ₹15,000.\n"
             "3. EMI affordability: loan_amount / tenure ≤ 50% of monthly_income.\n"
             "4. At least one income document (salary_slip, income_cert, or form_16) must be present.\n"
-            "5. Identity documents (aadhaar, pan) must be present.\n\n"
+            "5. Identity documents (aadhaar, pan) must be present.\n"
+            "6. For vehicle loans, vehicle documents (vehicle_document or invoice) should be acknowledged and considered.\n\n"
             "CRITICAL: BEFORE making any recommendation, you MUST use the policy_retrieval_tool to retrieve:\n"
             "  - Relevant Bank Policies\n"
             "  - Loan Eligibility Policies\n"
@@ -339,7 +493,8 @@ def build_tasks(agents: dict, run_context: dict) -> list:
             "  - If recommendation == 'manual_review' OR any issues exist → "
             "final_status = 'manual_review'\n"
             "  - Otherwise → final_status = 'approved'\n\n"
-            "CRITICAL: You MUST use the pdf_report_generation_tool to generate the final PDF report. Pass the applicant details, extracted_info (from Task 2), verification_result (from Task 3), and fraud_result (from Task 4).\n\n"
+            "CRITICAL: Synthesise all structured findings. Authoritative PDF report publication is managed downstream by the report review pipeline (do NOT invoke pdf_report_generation_tool).\n"
+            "CRITICAL: Do NOT execute any tool calls or function calls. Do NOT call a tool named 'json' or any other tool. Your final answer must be plain text and NOT a tool call.\n\n"
             "Return ONLY a single JSON object with this exact shape "
             "(no markdown fences, no commentary):\n"
             "{\n"
@@ -361,7 +516,7 @@ def build_tasks(agents: dict, run_context: dict) -> list:
             '  "recommendation": "<Final recommendation text>",\n'
             '  "human_review": "<What a human officer should focus on, if any>",\n'
             '  "summary": "<3-5 sentence plain-English summary for the loan officer>",\n'
-            '  "pdf_path": "<path returned by pdf_report_generation_tool>"\n'
+            '  "pdf_path": null\n'
             "}"
         ),
         expected_output=(
@@ -371,6 +526,7 @@ def build_tasks(agents: dict, run_context: dict) -> list:
         ),
         agent=agents["compliance_reporter"],
         context=[analyse_documents, extract_profile, verify_loan, verify_gov],
+        output_json=ComplianceReportOutput,
     )
 
     return [

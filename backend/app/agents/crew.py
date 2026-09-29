@@ -102,7 +102,12 @@ class LoanVerificationCrew:
         shared_context.record_timing("crewai", time.time() - start_time)
 
         raw_output = self._extract_raw(crew_output)
-        result = self._parse_final_json(raw_output)
+        if hasattr(crew_output, "json_dict") and isinstance(crew_output.json_dict, dict) and crew_output.json_dict:
+            result = dict(crew_output.json_dict)
+        elif hasattr(crew_output, "pydantic") and crew_output.pydantic:
+            result = crew_output.pydantic.model_dump()
+        else:
+            result = self._parse_final_json(raw_output)
         result["agent_trace"] = raw_output
 
         # Defensive defaults in case the LLM omitted a field

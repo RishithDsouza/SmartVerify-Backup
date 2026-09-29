@@ -24,11 +24,87 @@ logger = logging.getLogger(__name__)
 
 
 def get_llm() -> LLM:
-    """Build a LiteLLM-backed LLM instance using Google Gemini."""
+    """
+    Build an LLM instance for CrewAI agents.
+    Supports Groq (active default via LLM_PROVIDER="groq") and Gemini (fallback via LLM_PROVIDER="gemini").
+    """
+    provider = (
+        os.environ.get("LLM_PROVIDER")
+        or getattr(settings, "LLM_PROVIDER", "groq")
+        or "groq"
+    ).strip().lower()
+
+    temperature = getattr(settings, "CREWAI_TEMPERATURE", 0.2)
+
+    if provider == "groq":
+        model = (
+            os.environ.get("GROQ_MODEL")
+            or getattr(settings, "GROQ_MODEL", "")
+            or getattr(settings, "CREWAI_MODEL", "")
+            or "openai/gpt-oss-120b"
+        )
+
+        api_key = (
+            os.environ.get("GROQ_API_KEY")
+            or getattr(settings, "GROQ_API_KEY", "")
+            or getattr(settings, "groq_api_key", "")
+            or None
+        )
+        if api_key:
+            if not os.environ.get("GROQ_API_KEY"):
+                os.environ["GROQ_API_KEY"] = api_key
+
+        if model.startswith("openai/"):
+            llm = LLM(
+                model=model,
+                temperature=temperature,
+                api_key=api_key if api_key else None,
+                base_url="https://api.groq.com/openai/v1",
+            )
+            llm.model = model
+            return llm
+        elif model.startswith("groq/"):
+            return LLM(
+                model=model,
+                temperature=temperature,
+                api_key=api_key if api_key else None,
+            )
+        else:
+            return LLM(
+                model=f"groq/{model}",
+                temperature=temperature,
+                api_key=api_key if api_key else None,
+            )
+
+    # Gemini fallback
+    api_key = (
+        os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+        or getattr(settings, "GEMINI_API_KEY", "")
+        or getattr(settings, "GOOGLE_API_KEY", "")
+        or getattr(settings, "gemini_api_key", "")
+        or None
+    )
+
+    # Ensure environment variables are populated for underlying Google GenAI SDK
+    if api_key:
+        if not os.environ.get("GEMINI_API_KEY"):
+            os.environ["GEMINI_API_KEY"] = api_key
+        if not os.environ.get("GOOGLE_API_KEY"):
+            os.environ["GOOGLE_API_KEY"] = api_key
+
+    model = (
+        getattr(settings, "CREWAI_MODEL", "")
+        if getattr(settings, "CREWAI_MODEL", "").startswith("gemini/")
+        else getattr(settings, "GEMINI_MODEL", "gemini/gemini-3.8-flash")
+    )
+    if not model or not model.startswith("gemini/"):
+        model = "gemini/gemini-3.8-flash"
+
     return LLM(
-        model=settings.CREWAI_MODEL,          # e.g. "gemini/gemini-2.5-flash"
-        temperature=settings.CREWAI_TEMPERATURE,
-        api_key=os.environ.get("GEMINI_API_KEY", ""),
+        model=model,
+        temperature=temperature,
+        api_key=api_key if api_key else None,
     )
 
 
@@ -123,8 +199,8 @@ def build_agents(db_session, shared_context=None) -> dict:
         ),
         backstory=(
             "You are responsible for the final audit and synthesis. You review the findings "
-            "of all agents and compile them into a final decision. You use the "
-            "pdf_report_generation_tool to generate a final downloadable PDF report."
+            "of all agents and compile them into a final decision, handing off structured "
+            "findings to the downstream compliance and report generation pipeline."
         ),
         tools=[memory_tool, report_tool],
         llm=llm,

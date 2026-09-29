@@ -62,7 +62,15 @@ class GeminiRESTProvider(LLMProvider):
             raw_model = raw_model.split("/")[-1]
         self._model = raw_model
 
-        self._api_key = api_key or os.environ.get("GEMINI_API_KEY") or getattr(settings, "gemini_api_key", "")
+        self._api_key = (
+            api_key
+            or os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+            or getattr(settings, "GEMINI_API_KEY", "")
+            or getattr(settings, "GOOGLE_API_KEY", "")
+            or getattr(settings, "gemini_api_key", "")
+            or ""
+        )
         self.timeout_seconds = timeout_seconds
 
     @property

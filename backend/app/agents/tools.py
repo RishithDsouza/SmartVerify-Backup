@@ -39,7 +39,9 @@ class OCRTool(BaseTool):
     description: str = (
         "Extracts raw text from a document image or PDF using EasyOCR with a "
         "Tesseract fallback. Input: file_path (string). Returns the extracted "
-        "text as a string."
+        "text as a string. Note: Returns NO_TEXT_EXTRACTED if text cannot be extracted "
+        "or OCR is unavailable for the file path (indicating unavailable OCR text, not that "
+        "the document is unreadable)."
     )
     args_schema: Type[BaseModel] = OCRToolInput
 
@@ -47,11 +49,19 @@ class OCRTool(BaseTool):
         try:
             text = extract_text(file_path)
             if not text:
-                return "NO_TEXT_EXTRACTED"
+                return (
+                    "NO_TEXT_EXTRACTED: Raw OCR text unavailable for this file path. "
+                    "This indicates OCR extraction was unavailable, NOT that the underlying "
+                    "document is unreadable. Rely on authoritative structured_data."
+                )
             return text
         except Exception as e:
             logger.error(f"OCRTool failed for {file_path}: {e}")
-            return f"OCR_ERROR: {e}"
+            return (
+                f"NO_TEXT_EXTRACTED: Unable to run OCR on {file_path} ({e}). "
+                "This indicates OCR extraction was unavailable, NOT that the underlying "
+                "document is unreadable. Rely on authoritative structured_data."
+            )
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -193,10 +203,10 @@ class ReportToolInput(BaseModel):
 class ReportGenerationTool(BaseTool):
     name: str = "pdf_report_generation_tool"
     description: str = (
-        "Generates the final downloadable PDF verification report combining "
-        "applicant details, extracted information, verification checks, "
-        "risk analysis, and a recommendation. Returns a JSON string with "
-        "'pdf_path' pointing to the generated file."
+        "Bypassed legacy tool: Final report generation and PDF publication is handled "
+        "by the downstream authoritative reporting pipeline (verification_normalizer -> "
+        "ReportContextBuilder -> 26-Particular Report -> Report Review -> PDF Generator). "
+        "Returns a bypassed status without generating legacy PDFs."
     )
     args_schema: Type[BaseModel] = ReportToolInput
 
@@ -209,17 +219,16 @@ class ReportGenerationTool(BaseTool):
         verification_result: str,
         fraud_result: str,
     ) -> str:
-        try:
-            from app.db.database import SessionLocal
-            db = SessionLocal()
-            try:
-                pdf_path = generate_report(application_id=application_id, db=db)
-            finally:
-                db.close()
-            return json.dumps({"pdf_path": pdf_path})
-        except Exception as e:
-            logger.error(f"ReportGenerationTool failed: {e}")
-            return json.dumps({"error": str(e), "pdf_path": None})
+        # Bypassed: Authoritative PDF generation occurs downstream via ReportReview & PDFGenerator
+        logger.info(
+            f"[legacy_bypassed] ReportGenerationTool bypassed for application {application_id}. "
+            "Structured findings handoff to downstream authoritative report pipeline."
+        )
+        return json.dumps({
+            "status": "bypassed",
+            "pdf_path": None,
+            "message": "Legacy PDF generation bypassed. Handed off to downstream authoritative report pipeline."
+        })
 
 
 # ──────────────────────────────────────────────────────────────────────────

@@ -50,6 +50,18 @@ export const getDocuments          = (appId)   => api.get(`/documents/${appId}`)
 export const deleteDocument        = (docId)   => api.delete(`/documents/${docId}`);
 export const deleteDocumentsByType = (appId, docType) => api.delete(`/documents/by-type/${appId}/${docType}`);
 
+// ── Government Verification Result Screenshots ─────────────────────────
+// Dedicated endpoints stored in government_verification_screenshots.
+// Decoupled from borrower KYC documents; does NOT trigger OCR.
+export const uploadGovScreenshot = (appId, verificationType, file) => {
+  const formData = new FormData();
+  formData.append('verification_type', verificationType);
+  formData.append('file', file);
+  return api.post(`/gov-screenshots/${appId}/upload`, formData);
+};
+export const getGovScreenshots = (appId) => api.get(`/gov-screenshots/${appId}`);
+export const deleteGovScreenshot = (screenshotId) => api.delete(`/gov-screenshots/${screenshotId}`);
+
 // ── Verification ───────────────────────────────────────────────────────────
 export const runVerification = (appId) => api.post(`/verify/${appId}`);
 
