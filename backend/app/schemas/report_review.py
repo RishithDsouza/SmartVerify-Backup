@@ -9,6 +9,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.validated_report import ValidationIssue, ValidationSeverity
+from app.schemas.fraud_remarks import DocumentFraudRemarksSection
 
 
 class ReportEdit(BaseModel):
@@ -105,6 +106,7 @@ class ReportReviewState(BaseModel):
     edit_history: List[ReportEdit] = Field(default_factory=list, description="Complete chronological audit trail of edits")
     blocking_issues: List[ValidationIssue] = Field(default_factory=list, description="Active BLOCKING validation issues")
     warnings: List[ValidationIssue] = Field(default_factory=list, description="Active WARNING validation issues")
+    fraud_remarks: DocumentFraudRemarksSection = Field(default_factory=DocumentFraudRemarksSection)
     can_export_pdf: bool = Field(False, description="PDF export gate: True ONLY when validation passes with 0 blocking issues")
     created_at: str = Field(
         default_factory=lambda: datetime.utcnow().isoformat(),

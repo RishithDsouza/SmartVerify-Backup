@@ -40,6 +40,9 @@ class ValidationResult(BaseModel):
     checked_evidence_ids: List[str] = Field(default_factory=list, description="All EvidenceReference IDs checked")
 
 
+from app.schemas.fraud_remarks import DocumentFraudRemarksSection
+
+
 class ValidatedReport(BaseModel):
     """
     Complete, strongly-typed Validated Report Package (Phase 7).
@@ -59,6 +62,7 @@ class ValidatedReport(BaseModel):
     )
     blocking_issues: List[ValidationIssue] = Field(default_factory=list, description="All aggregated BLOCKING issues")
     warnings: List[ValidationIssue] = Field(default_factory=list, description="All aggregated WARNING issues")
+    fraud_remarks: DocumentFraudRemarksSection = Field(default_factory=DocumentFraudRemarksSection)
     validated_at: str = Field(
         default_factory=lambda: datetime.utcnow().isoformat(),
         description="ISO-8601 UTC timestamp of validation"

@@ -91,11 +91,14 @@ def _build_particular_scoped_payload(
         for g in context.guarantors
     ]
 
-    # Scoped evidence references
+    # Scoped evidence references segregated by party provenance
+    app_refs = []
+    guar_refs = []
+    shared_refs = []
     evidence_refs = []
     if evidence_mapping:
         for ref in evidence_mapping.evidence:
-            evidence_refs.append({
+            ref_dict = {
                 "evidence_id": ref.evidence_id,
                 "category": ref.evidence_category,
                 "source": ref.source,
@@ -104,7 +107,15 @@ def _build_particular_scoped_payload(
                 "party_id": ref.party_id,
                 "party_name": ref.party_name,
                 "status": ref.status,
-            })
+            }
+            evidence_refs.append(ref_dict)
+            p = (ref.party_id or "").lower()
+            if p == "applicant":
+                app_refs.append(ref_dict)
+            elif "guarantor" in p or "joint_applicant" in p or "co_applicant" in p:
+                guar_refs.append(ref_dict)
+            else:
+                shared_refs.append(ref_dict)
 
     # Scoped findings linked to this particular
     scoped_findings = []
@@ -139,8 +150,53 @@ def _build_particular_scoped_payload(
         "facts": facts_payload,
         "available_fact_ids": available_fact_ids,
         "evidence_references": evidence_refs,
+        "applicant_evidence_references": app_refs,
+        "guarantor_evidence_references": guar_refs,
+        "shared_evidence_references": shared_refs,
         "findings": scoped_findings,
     }
+
+
+def _filter_party_evidence_for_text(
+    text: str,
+    evidence_mapping: Optional[EvidenceMapping],
+    base_evidence_ids: List[str],
+) -> List[str]:
+    """
+    Ensures guarantor evidence is never cited in applicant-specific statements,
+    and applicant evidence is never cited in guarantor-specific statements.
+    """
+    if not evidence_mapping or not base_evidence_ids:
+        return []
+
+    ev_lookup = {ref.evidence_id: ref for ref in evidence_mapping.evidence}
+
+    lower_text = text.lower()
+    text_has_applicant = "applicant:" in lower_text or "applicant " in lower_text or "borrower" in lower_text
+    text_has_guarantor = "guarantor" in lower_text or "co-applicant" in lower_text or "joint applicant" in lower_text
+
+    filtered = []
+    for eid in base_evidence_ids:
+        ref = ev_lookup.get(eid)
+        if not ref:
+            continue
+        p = (ref.party_id or "").lower()
+        is_app = (p == "applicant")
+        is_guar = (p != "applicant") and bool(p and ("guarantor" in p or "joint_applicant" in p or "co_applicant" in p))
+
+        if text_has_applicant and not text_has_guarantor:
+            # Strictly applicant statement: no guarantor evidence allowed
+            if not is_guar:
+                filtered.append(eid)
+        elif text_has_guarantor and not text_has_applicant:
+            # Strictly guarantor statement: no applicant evidence allowed
+            if not is_app:
+                filtered.append(eid)
+        else:
+            # Mixed or neutral/shared statement: include reference
+            filtered.append(eid)
+
+    return filtered
 
 
 def _render_deterministic_text(
@@ -172,7 +228,11 @@ def _render_deterministic_text(
     elif pid == "P2":
         addr = app_facts.get("residence_address") or "Address unconfirmed"
         status = app_facts.get("residence_status") or "Status not recorded"
-        return f"Residential Address: {addr}; Tenure/Type: {status}"
+        parts = [f"Residential Address: {addr}; Tenure/Type: {status}"]
+        for g in guar_facts:
+            if g.get("residence_address"):
+                parts.append(f"Guarantor Address: {g.get('residence_address')}")
+        return " | ".join(parts)
 
     elif pid == "P2B":
         officer = app_facts.get("visiting_officer") or "Not recorded"
@@ -195,19 +255,49 @@ def _render_deterministic_text(
         aadhaar = app_facts.get("masked_aadhaar") or "N/A"
         aadhaar_val = app_facts.get("aadhaar_validity_status") or "Unverified"
         pan_link = app_facts.get("pan_aadhaar_link_status") or "Unverified"
-        return f"PAN: {pan}; Aadhaar: {aadhaar}; UIDAI Status: {aadhaar_val}; PAN-Aadhaar Link: {pan_link}"
+        parts = [f"Applicant: PAN: {pan}; Aadhaar: {aadhaar}; UIDAI Status: {aadhaar_val}; PAN-Aadhaar Link: {pan_link}"]
+        for g in guar_facts:
+            g_pan = g.get("pan_number", "N/A")
+            g_aadhaar = g.get("masked_aadhaar", "N/A")
+            parts.append(f"Guarantor: PAN: {g_pan}; Aadhaar: {g_aadhaar}")
+        return " | ".join(parts)
 
     elif pid == "P4":
-        docs = shared.get("income_documents_seen", [])
-        return f"Income Documents Verified: {', '.join(docs) if docs else 'None'}"
+        parts = []
+        app_docs = app_facts.get("income_docs_seen", [])
+        if app_docs:
+            parts.append(f"Applicant Income Documents: {', '.join(app_docs)}")
+        for g in guar_facts:
+            g_docs = g.get("income_docs_seen", [])
+            if g_docs:
+                parts.append(f"Guarantor Income Documents: {', '.join(g_docs)}")
+        if not parts:
+            docs = shared.get("income_documents_seen", [])
+            return f"Income Documents Verified: {', '.join(docs) if docs else 'None'}"
+        return " | ".join(parts)
 
     elif pid == "P4A":
-        docs = shared.get("documents_seen", [])
-        return f"Documents Seen: {', '.join(docs) if docs else 'None'}"
+        parts = []
+        app_docs = app_facts.get("documents_seen", [])
+        if app_docs:
+            parts.append(f"Applicant Documents Seen: {', '.join(app_docs)}")
+        for g in guar_facts:
+            g_docs = g.get("documents_seen", [])
+            if g_docs:
+                parts.append(f"Guarantor Documents Seen: {', '.join(g_docs)}")
+        if not parts:
+            docs = shared.get("documents_seen", [])
+            return f"Documents Seen: {', '.join(docs) if docs else 'None'}"
+        return " | ".join(parts)
 
     elif pid == "P4C":
+        parts = []
         emp = app_facts.get("employer_name") or "Employer details not recorded"
-        return f"Employer: {emp}"
+        parts.append(f"Applicant Employer: {emp}")
+        for g in guar_facts:
+            if g.get("employer_name"):
+                parts.append(f"Guarantor Employer: {g.get('employer_name')}")
+        return " | ".join(parts)
 
     elif pid == "P4D":
         occ = app_facts.get("occupation") or "Not recorded"
@@ -215,7 +305,13 @@ def _render_deterministic_text(
         inc_str = f"Rs. {inc:,.2f}" if isinstance(inc, (int, float)) else "Not recorded"
         yrs = app_facts.get("years_in_occupation")
         yrs_str = f"{yrs} years" if yrs is not None else "Not recorded"
-        return f"Occupation: {occ}; Income: {inc_str}; Experience: {yrs_str}"
+        parts = [f"Applicant: Occupation: {occ}; Income: {inc_str}; Experience: {yrs_str}"]
+        for g in guar_facts:
+            g_occ = g.get("occupation", "Not recorded")
+            g_inc = g.get("monthly_income")
+            g_inc_str = f"Rs. {g_inc:,.2f}" if isinstance(g_inc, (int, float)) else "Not recorded"
+            parts.append(f"Guarantor: Occupation: {g_occ}; Income: {g_inc_str}")
+        return " | ".join(parts)
 
     elif pid in ["P5", "P5A"]:
         bank = shared.get("bank_name") or app_facts.get("bank_name") or "Bank name not recorded"
@@ -337,13 +433,14 @@ def compose_report(
             # Deterministic rendering without AI
             dt_text = _render_deterministic_text(context, pid, fact_item)
             dt_text = _mask_aadhaar_pii(dt_text)
+            filtered_ev_ids = _filter_party_evidence_for_text(dt_text, evidence_mapping, avail_evidence_ids)
 
             particular_outputs[pid] = ComposedParticular(
                 particular_id=pid,
                 status="deterministic",
                 text=dt_text,
                 fact_ids=avail_fact_ids,
-                evidence_ids=avail_evidence_ids,
+                evidence_ids=filtered_ev_ids,
                 confidence=1.0,
                 missing_information=[],
                 model="deterministic",
@@ -379,6 +476,7 @@ def compose_report(
 
             reported_ev_ids = parsed_data.get("evidence_ids", [])
             valid_ev_ids = [eid for eid in reported_ev_ids if eid in avail_evidence_ids] if reported_ev_ids else avail_evidence_ids
+            filtered_ev_ids = _filter_party_evidence_for_text(ai_text, evidence_mapping, valid_ev_ids)
 
             ai_confidence = parsed_data.get("confidence")
             if ai_confidence is not None:
@@ -394,7 +492,7 @@ def compose_report(
                 status="composed",
                 text=ai_text,
                 fact_ids=valid_fact_ids,
-                evidence_ids=valid_ev_ids,
+                evidence_ids=filtered_ev_ids,
                 confidence=ai_confidence,
                 missing_information=parsed_data.get("missing_information", []),
                 model=provider.model_name,
@@ -409,13 +507,14 @@ def compose_report(
             # Preserve Phase 4 deterministic output where one exists; otherwise empty text.
             dt_fallback = _render_deterministic_text(context, pid, fact_item)
             dt_fallback = _mask_aadhaar_pii(dt_fallback)
+            filtered_ev_ids = _filter_party_evidence_for_text(dt_fallback, evidence_mapping, avail_evidence_ids)
 
             particular_outputs[pid] = ComposedParticular(
                 particular_id=pid,
                 status="composer_unavailable",
                 text=dt_fallback,
                 fact_ids=avail_fact_ids,
-                evidence_ids=avail_evidence_ids,
+                evidence_ids=filtered_ev_ids,
                 confidence=None,
                 missing_information=[f"AI composition unavailable: {str(err)}"],
                 model=provider.model_name,

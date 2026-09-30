@@ -3,8 +3,8 @@ import { useDropzone } from 'react-dropzone';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ShieldCheck, ExternalLink, CheckCircle2, XCircle,
-  Clock, Eye, User, FileImage, Trash2, ClipboardCheck,
-  BadgeInfo, Save, AlertTriangle, Fingerprint,
+  Clock, Eye, User, FileImage, Trash2,
+  BadgeInfo, Save, AlertTriangle,
   CheckCircle, AlertCircle, Loader2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -41,92 +41,90 @@ const PAN_STATUS_OPTIONS = [
 const LINK_UIDAI_PORTAL = 'https://myaadhaar.uidai.gov.in/check-aadhaar-validity/en';
 const LINK_AADHAAR_PORTAL = 'https://eportal.incometax.gov.in/iec/foservices/#/pre-login/link-aadhaar-status';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function extractFromDocuments(docs) {
-  let panNumber = null;
-  let aadhaarNumber = null;
-  let applicantName = null;
 
-  const sorted = [...docs].sort(
-    (a, b) => new Date(b.created_at) - new Date(a.created_at)
-  );
+// ─── Status Normalization Helpers ───────────────────────────────────────────
 
-  const parseSD = (doc) => {
-    if (!doc.structured_data) return {};
-    try { return JSON.parse(doc.structured_data); }
-    catch { return {}; }
-  };
+function normalizeAadhaarStatus(raw) {
+  if (!raw) return 'Pending';
+  const s = String(raw).trim().toLowerCase();
+  if (s === 'valid' || s === 'verified') return 'Valid';
+  if (s === 'invalid' || s === 'rejected') return 'Invalid';
+  if (s.includes('manual')) return 'Manual Review Required';
+  return 'Pending';
+}
 
-  // Priority pass: prefer matching doc type
-  for (const doc of sorted) {
-    const sd = parseSD(doc);
-    if (!panNumber && doc.document_type === 'pan' && sd.pan_number) panNumber = sd.pan_number;
-    if (!aadhaarNumber && doc.document_type === 'aadhaar' && sd.aadhaar_number) aadhaarNumber = sd.aadhaar_number;
-    if (!applicantName && sd.applicant_name) applicantName = sd.applicant_name;
-  }
-
-  // Fallback pass
-  for (const doc of sorted) {
-    const sd = parseSD(doc);
-    if (!panNumber && sd.pan_number) panNumber = sd.pan_number;
-    if (!aadhaarNumber && sd.aadhaar_number) aadhaarNumber = sd.aadhaar_number;
-    if (!applicantName && sd.applicant_name) applicantName = sd.applicant_name;
-  }
-
-  return {
-    panNumber: panNumber || null,
-    aadhaarNumber: aadhaarNumber || null,
-    applicantName: applicantName || null,
-    panSource: panNumber ? 'ocr' : 'none',
-    aadhaarSource: aadhaarNumber ? 'ocr' : 'none',
-    nameSource: applicantName ? 'ocr' : 'none',
-  };
+function normalizePanStatus(raw) {
+  if (!raw) return 'Pending';
+  const s = String(raw).trim().toLowerCase();
+  if (s === 'linked' || s === 'verified' || s === 'valid') return 'Linked';
+  if (s === 'not linked' || s === 'not_linked' || s === 'invalid' || s === 'rejected') return 'Not Linked';
+  if (s.includes('manual')) return 'Manual Review Required';
+  return 'Pending';
 }
 
 // ─── Status Config ────────────────────────────────────────────────────────────
 
 function statusConfig(status) {
-  switch (status) {
-    case 'Valid':
-    case 'Linked':
-      return {
-        badge: 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200',
-        dot: 'bg-emerald-500',
-        icon: <CheckCircle2 className="w-3.5 h-3.5" />,
-        label: status,
-        ring: 'ring-emerald-300',
-        header: 'border-l-4 border-emerald-400',
-      };
-    case 'Invalid':
-    case 'Not Linked':
-      return {
-        badge: 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200',
-        dot: 'bg-red-500',
-        icon: <XCircle className="w-3.5 h-3.5" />,
-        label: status,
-        ring: 'ring-red-300',
-        header: 'border-l-4 border-red-400',
-      };
-    case 'Manual Review Required':
-      return {
-        badge: 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200',
-        dot: 'bg-blue-500',
-        icon: <Eye className="w-3.5 h-3.5" />,
-        label: 'Manual Review',
-        ring: 'ring-blue-300',
-        header: 'border-l-4 border-blue-400',
-      };
-    default:
-      return {
-        badge: 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200',
-        dot: 'bg-amber-500',
-        icon: <Clock className="w-3.5 h-3.5" />,
-        label: 'Pending',
-        ring: 'ring-amber-300',
-        header: 'border-l-4 border-amber-400',
-      };
+  const norm = (status || '').trim().toLowerCase();
+  if (norm === 'valid' || norm === 'linked' || norm === 'verified') {
+    const displayLabel = (status === 'Linked' || norm === 'linked') ? 'Linked' : 'Valid';
+    return {
+      badge: 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200',
+      dot: 'bg-emerald-500',
+      icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+      label: displayLabel,
+      ring: 'ring-emerald-300',
+      header: 'border-l-4 border-emerald-400',
+    };
   }
+  if (norm === 'invalid' || norm === 'not linked' || norm === 'not_linked' || norm === 'rejected') {
+    const displayLabel = (status === 'Not Linked' || norm.includes('linked')) ? 'Not Linked' : 'Invalid';
+    return {
+      badge: 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200',
+      dot: 'bg-red-500',
+      icon: <XCircle className="w-3.5 h-3.5" />,
+      label: displayLabel,
+      ring: 'ring-red-300',
+      header: 'border-l-4 border-red-400',
+    };
+  }
+  if (norm.includes('manual')) {
+    return {
+      badge: 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200',
+      dot: 'bg-blue-500',
+      icon: <Eye className="w-3.5 h-3.5" />,
+      label: 'Manual Review',
+      ring: 'ring-blue-300',
+      header: 'border-l-4 border-blue-400',
+    };
+  }
+  return {
+    badge: 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200',
+    dot: 'bg-amber-500',
+    icon: <Clock className="w-3.5 h-3.5" />,
+    label: 'Pending',
+    ring: 'ring-amber-300',
+    header: 'border-l-4 border-amber-400',
+  };
+}
+
+// ─── Aadhaar Masking Helpers ──────────────────────────────────────────────────
+
+function normAadhaar(s) {
+  return (s || '').replace(/[\s-]/g, '');
+}
+
+function formatAadhaarDisplay(val, mask = true) {
+  if (!val) return '';
+  const clean = normAadhaar(val);
+  if (mask && clean.length >= 12) {
+    return `XXXX XXXX ${clean.slice(-4)}`;
+  }
+  if (clean.length === 12) {
+    return `${clean.slice(0, 4)} ${clean.slice(4, 8)} ${clean.slice(8, 12)}`;
+  }
+  return val;
 }
 
 // ─── Extracted Field Display ──────────────────────────────────────────────────
@@ -134,6 +132,9 @@ function statusConfig(status) {
 function ExtractedField({
   label,
   value,
+  displayValue,
+  onToggleMask,
+  isMasked,
   onChange,
   source,
   loading,
@@ -142,7 +143,8 @@ function ExtractedField({
   placeholder,
   confidenceLevel,
   confidenceScore,
-  warningText
+  warningText,
+  multiline
 }) {
   if (loading) {
     return (
@@ -160,48 +162,90 @@ function ExtractedField({
 
   const hasValue = !!value;
 
+  // source === 'vision' = Gemini Vision fallback
+  const isVision = source === 'vision';
+
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
           {label}
         </label>
-        {source === 'ocr' && hasValue && confidenceLevel && (
-          <span
-            className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${confidenceLevel === 'high'
-              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-              : 'bg-amber-50 text-amber-700 border border-amber-200'
+        <div className="flex items-center gap-2">
+          {onToggleMask && hasValue && (
+            <button
+              type="button"
+              onClick={onToggleMask}
+              className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+            >
+              {isMasked ? 'Unmask' : 'Mask'}
+            </button>
+          )}
+          {/* Confidence badge for OCR */}
+          {source === 'ocr' && hasValue && confidenceLevel && (
+            <span
+              className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                confidenceLevel === 'high'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 border border-amber-200'
               }`}
-          >
-            {confidenceLevel === 'high' ? (
-              <>
-                <CheckCircle className="w-3 h-3 text-emerald-600" />
-                High confidence
-              </>
-            ) : (
-              <>
-                <AlertTriangle className="w-3 h-3 text-amber-600" />
-                Low confidence
-              </>
-            )}
-          </span>
-        )}
+            >
+              {confidenceLevel === 'high' ? (
+                <>
+                  <CheckCircle className="w-3 h-3 text-emerald-600" />
+                  High confidence
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-3 h-3 text-amber-600" />
+                  Low confidence
+                </>
+              )}
+            </span>
+          )}
+          {/* Vision badge */}
+          {isVision && hasValue && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+              ✨ Vision AI
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={hasValue ? value : ''}
-          onChange={(e) => onChange && onChange(e.target.value)}
-          placeholder={placeholder || `Upload image below to extract ${label}`}
-          className={`input font-mono tracking-wider border-slate-200
-            ${hasValue
-              ? 'bg-white text-slate-800 uppercase font-semibold'
-              : 'bg-slate-50 text-slate-400 placeholder:text-slate-400 placeholder:italic placeholder:font-sans placeholder:tracking-normal'
-            }`}
-        />
+        {multiline ? (
+          <textarea
+            rows={3}
+            value={hasValue ? value : ''}
+            onChange={(e) => onChange && onChange(e.target.value)}
+            placeholder={placeholder || `Upload image below to extract ${label}`}
+            className={`input font-mono text-xs resize-y border-slate-200 w-full
+              ${hasValue
+                ? 'bg-white text-slate-800'
+                : 'bg-slate-50 text-slate-400 placeholder:text-slate-400 placeholder:italic placeholder:font-sans'
+              }`}
+          />
+        ) : (
+          <input
+            type="text"
+            value={hasValue ? (displayValue !== undefined ? displayValue : value) : ''}
+            onChange={(e) => onChange && onChange(e.target.value)}
+            placeholder={placeholder || `Upload image below to extract ${label}`}
+            className={`input font-mono tracking-wider border-slate-200
+              ${hasValue
+                ? 'bg-white text-slate-800 uppercase font-semibold'
+                : 'bg-slate-50 text-slate-400 placeholder:text-slate-400 placeholder:italic placeholder:font-sans placeholder:tracking-normal'
+              }`}
+          />
+        )}
         <div
           className="flex-shrink-0 p-2 rounded-lg bg-white border border-slate-200"
-          title={source === 'ocr' ? 'Auto-extracted by OCR from uploaded image' : 'Editable field'}
+          title={
+            isVision
+              ? 'Address extracted by Gemini Vision AI (OCR fallback)'
+              : source === 'ocr' || source === 'aadhaar' || source === 'pan'
+              ? 'Auto-extracted by OCR from uploaded document'
+              : 'Editable field'
+          }
         >
           <BadgeInfo className="w-4 h-4 text-slate-400" />
         </div>
@@ -215,11 +259,23 @@ function ExtractedField({
       )}
 
       <div className="mt-1.5 flex items-center gap-1.5">
-        {source === 'ocr' && hasValue ? (
+        {warningText ? (
+          <>
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+            <span className="text-xs text-amber-700 font-medium">{warningText}</span>
+          </>
+        ) : isVision && hasValue ? (
+          <>
+            <CheckCircle className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+            <span className="text-xs text-violet-600 font-medium">
+              Extracted from Aadhaar (Vision)
+            </span>
+          </>
+        ) : (source === 'ocr' || source === 'aadhaar' || source === 'pan') && hasValue ? (
           <>
             <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
             <span className="text-xs text-emerald-600 font-medium">
-              Extracted from uploaded image (OCR)
+              {source === 'pan' ? 'Extracted from PAN' : 'Extracted from Aadhaar'}
             </span>
           </>
         ) : hasValue ? (
@@ -431,6 +487,7 @@ export default function GovVerificationPage() {
   // OCR-extracted values
   const [panNumber, setPanNumber] = useState('');
   const [aadhaarNumber, setAadhaarNumber] = useState('');
+  const [maskAadhaar, setMaskAadhaar] = useState(false);
   const [applicantName, setApplicantName] = useState('');
   const [panSource, setPanSource] = useState('none');
   const [aadhaarSource, setAadhaarSource] = useState('none');
@@ -455,6 +512,8 @@ export default function GovVerificationPage() {
   const [aadhaarName, setAadhaarName] = useState('');
   const [aadhaarOcrText, setAadhaarOcrText] = useState('');
   const [aadhaarAddress, setAadhaarAddress] = useState('');
+  const [aadhaarAddressMethod, setAadhaarAddressMethod] = useState(''); // 'ocr' | 'vision' | ''
+  const [aadhaarAddressWarning, setAadhaarAddressWarning] = useState(null);
   const [aadhaarDob, setAadhaarDob] = useState('');
   const [aadhaarGender, setAadhaarGender] = useState('');
   const [aadhaarNameConfidence, setAadhaarNameConfidence] = useState(null);
@@ -524,6 +583,8 @@ export default function GovVerificationPage() {
       if (cached.aadhaarName !== undefined) setAadhaarName(cached.aadhaarName);
       if (cached.aadhaarOcrText !== undefined) setAadhaarOcrText(cached.aadhaarOcrText);
       if (cached.aadhaarAddress !== undefined) setAadhaarAddress(cached.aadhaarAddress || '');
+      if (cached.aadhaarAddressMethod !== undefined) setAadhaarAddressMethod(cached.aadhaarAddressMethod || '');
+      if (cached.aadhaarAddressWarning !== undefined) setAadhaarAddressWarning(cached.aadhaarAddressWarning || null);
       if (cached.aadhaarDob !== undefined) setAadhaarDob(cached.aadhaarDob || '');
       if (cached.aadhaarGender !== undefined) setAadhaarGender(cached.aadhaarGender || '');
       if (cached.aadhaarNameConfidence !== undefined) setAadhaarNameConfidence(cached.aadhaarNameConfidence);
@@ -580,8 +641,8 @@ export default function GovVerificationPage() {
         if (gov) {
           const parts = gov.timestamp ? gov.timestamp.split(' ') : [];
           auditPatch = {
-            aadhaarStatus: gov.aadhaar_validity_status || 'Pending',
-            panStatus: gov.pan_aadhaar_link_status || 'Pending',
+            aadhaarStatus: normalizeAadhaarStatus(gov.aadhaar_validity_status),
+            panStatus: normalizePanStatus(gov.pan_aadhaar_link_status),
             officerName: gov.officer_name || '',
             date: parts[0] || '',
             time: parts.slice(1).join(' ') || '',
@@ -589,10 +650,48 @@ export default function GovVerificationPage() {
           };
         }
 
-        // 2. Documents from documents table
-        const sortedDocs = [...docs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        const latestAadhaar = sortedDocs.find(d => d.document_type === 'aadhaar');
-        const latestPan = sortedDocs.find(d => d.document_type === 'pan');
+        const fallbackAadhaarShot = (!aadhaarScreenshotObj && gov?.aadhaar_screenshot_path) ? {
+          id: null,
+          url: gov.aadhaar_screenshot_path.startsWith('/') && !gov.aadhaar_screenshot_path.startsWith('/uploads/')
+            ? `/uploads/${gov.aadhaar_screenshot_path.split(/[/\\]/).pop()}`
+            : gov.aadhaar_screenshot_path,
+          name: gov.aadhaar_screenshot_path.split(/[/\\]/).pop(),
+        } : null;
+
+        const fallbackPanShot = (!panScreenshotObj && gov?.screenshot_path) ? {
+          id: null,
+          url: gov.screenshot_path.startsWith('/') && !gov.screenshot_path.startsWith('/uploads/')
+            ? `/uploads/${gov.screenshot_path.split(/[/\\]/).pop()}`
+            : gov.screenshot_path,
+          name: gov.screenshot_path.split(/[/\\]/).pop(),
+        } : null;
+
+        const effectiveAadhaarShot = aadhaarScreenshotObj || fallbackAadhaarShot;
+        const effectivePanShot = panScreenshotObj || fallbackPanShot;
+
+        // 2. Documents from documents table for the CURRENT application only (FIX 3 & FIX 4)
+        const appDocs = docs.filter(d => String(d.application_id) === String(selectedAppId));
+
+        // Select latest processed Aadhaar document belonging to the CURRENT application
+        // Prefer latest successfully processed document (processed === 2) over unprocessed
+        const aadhaarDocs = appDocs.filter(d => d.document_type === 'aadhaar');
+        const sortedAadhaar = [...aadhaarDocs].sort((a, b) => {
+          const aProc = a.processed === 2 ? 1 : 0;
+          const bProc = b.processed === 2 ? 1 : 0;
+          if (bProc !== aProc) return bProc - aProc;
+          return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
+        const latestAadhaar = sortedAadhaar[0] || null;
+
+        // Select latest processed PAN document belonging to the CURRENT application
+        const panDocs = appDocs.filter(d => d.document_type === 'pan');
+        const sortedPan = [...panDocs].sort((a, b) => {
+          const aProc = a.processed === 2 ? 1 : 0;
+          const bProc = b.processed === 2 ? 1 : 0;
+          if (bProc !== aProc) return bProc - aProc;
+          return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
+        const latestPan = sortedPan[0] || null;
 
         const currentCache = loadGovCache(selectedAppId) || {};
 
@@ -608,6 +707,11 @@ export default function GovVerificationPage() {
         let aadhaarConfLvl = null;
         let aadhaarConfScr = null;
         let aadhaarWarn = null;
+        let newAadhaarAddress = '';
+        let newAadhaarAddressMethod = '';
+        let newAadhaarAddressWarning = null;
+        let newAadhaarDob = '';
+        let newAadhaarGender = '';
 
         if (latestAadhaar) {
           const fn = latestAadhaar.file_path.split(/[/\\]/).pop();
@@ -624,36 +728,50 @@ export default function GovVerificationPage() {
                 aadhaarQualWarn = sd.image_quality.warning;
               }
 
-              if (sd.fields?.aadhaar_number) {
-                const f = sd.fields.aadhaar_number;
-                if (f.value) {
-                  newAadhaarNum = f.value;
-                  newAadhaarSource = 'ocr';
-                }
-                aadhaarConfLvl = f.confidence_level || (f.confidence >= 0.75 ? 'high' : 'low');
-                aadhaarConfScr = f.confidence;
-                aadhaarWarn = f.warning || null;
-              } else if (sd.aadhaar_number) {
-                newAadhaarNum = sd.aadhaar_number;
-                newAadhaarSource = 'ocr';
+              const fAadhaar = sd.fields?.aadhaar_number || sd.fields?.aadhaar || sd.fields?.aadhaar_no || sd.fields?.uid;
+              if (fAadhaar && fAadhaar.value) {
+                newAadhaarNum = fAadhaar.value;
+                newAadhaarSource = 'aadhaar';
+                aadhaarConfLvl = fAadhaar.confidence_level || (fAadhaar.confidence >= 0.75 ? 'high' : 'low');
+                aadhaarConfScr = fAadhaar.confidence;
+                aadhaarWarn = fAadhaar.warning || null;
+              } else if (sd.aadhaar_number || sd.aadhaar || sd.aadhaar_no || sd.uid) {
+                newAadhaarNum = sd.aadhaar_number || sd.aadhaar || sd.aadhaar_no || sd.uid;
+                newAadhaarSource = 'aadhaar';
                 aadhaarConfLvl = 'high';
               }
 
-              if (sd.fields?.applicant_name) {
-                const f = sd.fields.applicant_name;
-                if (f.value) {
-                  newAadhaarName = f.value;
-                  newAadhaarNameConf = f.confidence_level || 'high';
-                }
-              } else if (sd.applicant_name) {
-                newAadhaarName = sd.applicant_name;
+              const fName = sd.fields?.applicant_name || sd.fields?.name;
+              if (fName && fName.value) {
+                newAadhaarName = fName.value;
+                newAadhaarNameConf = fName.confidence_level || 'high';
+              } else if (sd.applicant_name || sd.name) {
+                newAadhaarName = sd.applicant_name || sd.name;
                 newAadhaarNameConf = 'high';
               }
+
+              const addrVal = sd.fields?.address?.value || sd.address || '';
+              if (addrVal) {
+                newAadhaarAddress = addrVal;
+                const addrMethod = sd.fields?.address?.extraction_method || '';
+                newAadhaarAddressMethod = addrMethod === 'gemini_vision_fallback' ? 'vision' : 'aadhaar';
+                newAadhaarAddressWarning = sd.fields?.address?.warning || null;
+              } else {
+                newAadhaarAddress = '';
+                newAadhaarAddressMethod = '';
+                newAadhaarAddressWarning = sd.fields?.address?.warning || null;
+              }
+              const dobVal = sd.fields?.dob?.value || sd.dob || '';
+              if (dobVal) newAadhaarDob = dobVal;
+              const genVal = sd.fields?.gender?.value || sd.gender || '';
+              if (genVal) newAadhaarGender = genVal;
             } catch (e) { }
           }
         } else {
           setAadhaarCardImage(null);
-          auditPatch.aadhaarStatus = 'Pending';
+          if (!gov) {
+            auditPatch.aadhaarStatus = 'Pending';
+          }
         }
 
         // PAN document processing (read-only here — OCR fields only; the
@@ -712,7 +830,9 @@ export default function GovVerificationPage() {
           }
         } else {
           setPanCardImage(null);
-          auditPatch.panStatus = 'Pending';
+          if (!gov) {
+            auditPatch.panStatus = 'Pending';
+          }
         }
 
         // Applicant name resolution
@@ -736,8 +856,8 @@ export default function GovVerificationPage() {
         setData(prev => ({
           ...prev,
           ...auditPatch,
-          aadhaarScreenshot: aadhaarScreenshotObj,
-          panScreenshot: panScreenshotObj,
+          aadhaarScreenshot: effectiveAadhaarShot,
+          panScreenshot: effectivePanShot,
         }));
 
         setAadhaarNumber(newAadhaarNum);
@@ -745,6 +865,11 @@ export default function GovVerificationPage() {
         setAadhaarName(newAadhaarName);
         setAadhaarOcrText(newAadhaarOcrText);
         setAadhaarNameConfidence(newAadhaarNameConf);
+        setAadhaarAddress(newAadhaarAddress);
+        setAadhaarAddressMethod(newAadhaarAddressMethod);
+        setAadhaarAddressWarning(newAadhaarAddressWarning);
+        setAadhaarDob(newAadhaarDob);
+        setAadhaarGender(newAadhaarGender);
         setAadhaarQualityWarning(aadhaarQualWarn);
         setAadhaarConfidenceLevel(aadhaarConfLvl);
         setAadhaarConfidenceScore(aadhaarConfScr);
@@ -764,11 +889,11 @@ export default function GovVerificationPage() {
         setNameSource(resolvedNameSource);
         setNameConfidenceLevel(resolvedNameConf);
 
-        // Keep cache synced
+        // Keep cache synced with backend authoritative data (FIX 2)
         saveGovCache(selectedAppId, {
           ...auditPatch,
-          aadhaarScreenshot: aadhaarScreenshotObj,
-          panScreenshot: panScreenshotObj,
+          aadhaarScreenshot: effectiveAadhaarShot,
+          panScreenshot: effectivePanShot,
           aadhaarNumber: newAadhaarNum,
           panNumber: newPanNum,
           aadhaarName: newAadhaarName,
@@ -777,6 +902,11 @@ export default function GovVerificationPage() {
           panOcrText: newPanOcrText,
           aadhaarNameConfidence: newAadhaarNameConf,
           panNameConfidence: newPanNameConf,
+          aadhaarAddress: newAadhaarAddress,
+          aadhaarAddressMethod: newAadhaarAddressMethod,
+          aadhaarAddressWarning: newAadhaarAddressWarning,
+          aadhaarDob: newAadhaarDob,
+          aadhaarGender: newAadhaarGender,
           applicantName: resolvedAppName,
           aadhaarSource: newAadhaarSource,
           panSource: newPanSource,
@@ -961,9 +1091,13 @@ export default function GovVerificationPage() {
     }
   };
 
-  // ── Aadhaar CARD (original document -> OCR). Independent from the verification screenshot. ──
+  // ── Aadhaar CARD (original borrower document -> OCR). Independent from the verification screenshot. ──
   const handleAadhaarCardAccepted = async (file) => {
     if (!selectedAppId) { toast.error('Please select an application first'); return; }
+    console.log('[GovVerification] Uploading document:', {
+      applicationId: selectedAppId,
+      documentType: 'aadhaar',
+    });
     setAadhaarCardImage({ url: URL.createObjectURL(file), name: file.name });
     setIsExtractingAadhaar(true);
     const toastId = toast.loading(`Scanning ${file.name} with OCR model...`);
@@ -973,31 +1107,54 @@ export default function GovVerificationPage() {
       formData.append('document_type', 'aadhaar');
       formData.append('file', file);
       const upRes = await uploadDocument(formData);
+      console.log('[GovVerification] Uploaded document:', {
+        applicationId: selectedAppId,
+        documentType: 'aadhaar',
+        documentId: upRes.data.id,
+      });
       const procRes = await processDocument(upRes.data.id);
       const doc = procRes.data;
       const fn = doc.file_path ? doc.file_path.split(/[/\\]/).pop() : file.name;
       setAadhaarCardImage({ id: doc.id, url: `/uploads/${fn}`, name: doc.original_name || file.name });
 
       let num = '', src = 'none', name = '', nameConf = null;
-      let address = '', dob = '', gender = '';
+      let address = '', dob = '', gender = '', addrSrc = '', addrWarn = null;
       let qualWarn = null, confLvl = null, confScr = null, warn = null;
       const ocrText = doc.extracted_text || '';
       if (doc.structured_data) {
         const sd = typeof doc.structured_data === 'string' ? JSON.parse(doc.structured_data) : doc.structured_data;
         if (sd.image_quality?.warning) { qualWarn = sd.image_quality.warning; toast('Notice: ' + qualWarn, { icon: '⚠️' }); }
-        if (sd.fields?.aadhaar_number) {
-          const f = sd.fields.aadhaar_number;
-          if (f.value) { num = f.value; src = 'ocr'; }
-          confLvl = f.confidence_level || (f.confidence >= 0.75 ? 'high' : 'low');
-          confScr = f.confidence; warn = f.warning || null;
-        } else if (sd.aadhaar_number) { num = sd.aadhaar_number; src = 'ocr'; confLvl = 'high'; }
-        if (sd.fields?.applicant_name) {
-          const f = sd.fields.applicant_name;
-          if (f.value) { name = f.value; nameConf = f.confidence_level || (f.confidence >= 0.75 ? 'high' : 'low'); }
-        } else if (sd.applicant_name) { name = sd.applicant_name; nameConf = 'high'; }
+
+        const fAadhaar = sd.fields?.aadhaar_number || sd.fields?.aadhaar || sd.fields?.aadhaar_no || sd.fields?.uid;
+        if (fAadhaar && fAadhaar.value) {
+          num = fAadhaar.value;
+          src = 'aadhaar';
+          confLvl = fAadhaar.confidence_level || (fAadhaar.confidence >= 0.75 ? 'high' : 'low');
+          confScr = fAadhaar.confidence;
+          warn = fAadhaar.warning || null;
+        } else if (sd.aadhaar_number || sd.aadhaar || sd.aadhaar_no || sd.uid) {
+          num = sd.aadhaar_number || sd.aadhaar || sd.aadhaar_no || sd.uid;
+          src = 'aadhaar';
+          confLvl = 'high';
+        }
+
+        const fName = sd.fields?.applicant_name || sd.fields?.name;
+        if (fName && fName.value) {
+          name = fName.value;
+          nameConf = fName.confidence_level || (fName.confidence >= 0.75 ? 'high' : 'low');
+        } else if (sd.applicant_name || sd.name) {
+          name = sd.applicant_name || sd.name;
+          nameConf = 'high';
+        }
+
         address = sd.fields?.address?.value || sd.address || '';
+        const addrMethod = sd.fields?.address?.extraction_method || '';
+        addrWarn = sd.fields?.address?.warning || null;
+        addrSrc = addrMethod === 'gemini_vision_fallback' ? 'vision' : (address ? 'aadhaar' : '');
         dob = sd.fields?.dob?.value || sd.dob || '';
         gender = sd.fields?.gender?.value || sd.gender || '';
+        setAadhaarAddressMethod(addrSrc);
+        setAadhaarAddressWarning(addrWarn);
       }
 
       setAadhaarNumber(num); setAadhaarSource(src); setAadhaarName(name); setAadhaarOcrText(ocrText); setAadhaarNameConfidence(nameConf);
@@ -1005,7 +1162,7 @@ export default function GovVerificationPage() {
       setAadhaarQualityWarning(qualWarn); setAadhaarConfidenceLevel(confLvl); setAadhaarConfidenceScore(confScr); setAadhaarFieldWarning(warn);
 
       let nextAppName = applicantName, nextNameSource = nameSource, nextNameConf = nameConfidenceLevel;
-      if (name && (nameSource !== 'manual') && (true)) {
+      if (name && (nameSource !== 'manual')) {
         nextAppName = name; nextNameSource = 'aadhaar'; nextNameConf = nameConf;
         setApplicantName(name); setNameSource('aadhaar'); setNameConfidenceLevel(nameConf);
       }
@@ -1014,9 +1171,10 @@ export default function GovVerificationPage() {
       else if (num) toast(`OCR detected Aadhaar: ${num} (Low confidence - please verify)`, { icon: '⚠️', id: toastId });
       else toast.error(warn || 'Could not detect Aadhaar number. Please upload a clearer image.', { id: toastId });
 
+      // addrSrc is a local var (state update is async) – save directly to cache
       saveGovCache(selectedAppId, {
         aadhaarNumber: num, aadhaarSource: src, aadhaarName: name, aadhaarOcrText: ocrText, aadhaarNameConfidence: nameConf,
-        aadhaarAddress: address, aadhaarDob: dob, aadhaarGender: gender,
+        aadhaarAddress: address, aadhaarAddressMethod: addrSrc, aadhaarAddressWarning: addrWarn, aadhaarDob: dob, aadhaarGender: gender,
         aadhaarQualityWarning: qualWarn, aadhaarConfidenceLevel: confLvl, aadhaarConfidenceScore: confScr, aadhaarFieldWarning: warn,
         applicantName: nextAppName, nameSource: nextNameSource, nameConfidenceLevel: nextNameConf,
       });
@@ -1029,13 +1187,12 @@ export default function GovVerificationPage() {
     }
   };
 
-  // Removes ONLY the Aadhaar card + its OCR data. The verification screenshot is not touched.
   const handleClearAadhaarCard = async () => {
     const docId = aadhaarCardImage?.id;
     if (aadhaarCardImage?.url?.startsWith('blob:')) URL.revokeObjectURL(aadhaarCardImage.url);
     setAadhaarCardImage(null);
     setAadhaarNumber(''); setAadhaarSource('none'); setAadhaarName(''); setAadhaarOcrText(''); setAadhaarNameConfidence(null);
-    setAadhaarAddress(''); setAadhaarDob(''); setAadhaarGender('');
+    setAadhaarAddress(''); setAadhaarAddressMethod(''); setAadhaarAddressWarning(null); setAadhaarDob(''); setAadhaarGender('');
     setAadhaarQualityWarning(null); setAadhaarConfidenceLevel(null); setAadhaarConfidenceScore(null); setAadhaarFieldWarning(null);
 
     let nextName = applicantName, nextNameSource = nameSource, nextNameConf = nameConfidenceLevel;
@@ -1046,6 +1203,7 @@ export default function GovVerificationPage() {
     }
     saveGovCache(selectedAppId, {
       aadhaarNumber: '', aadhaarSource: 'none', aadhaarName: '', aadhaarOcrText: '', aadhaarNameConfidence: null,
+      aadhaarAddress: '', aadhaarAddressMethod: '', aadhaarAddressWarning: null, aadhaarDob: '', aadhaarGender: '',
       aadhaarQualityWarning: null, aadhaarConfidenceLevel: null, aadhaarConfidenceScore: null, aadhaarFieldWarning: null,
       applicantName: nextName, nameSource: nextNameSource, nameConfidenceLevel: nextNameConf,
     });
@@ -1059,9 +1217,13 @@ export default function GovVerificationPage() {
     }
   };
 
-  // ── Pan CARD (original document -> OCR). Independent from the verification screenshot. ──
+  // ── Pan CARD (original borrower document -> OCR). Independent from the verification screenshot. ──
   const handlePanCardAccepted = async (file) => {
     if (!selectedAppId) { toast.error('Please select an application first'); return; }
+    console.log('[GovVerification] Uploading document:', {
+      applicationId: selectedAppId,
+      documentType: 'pan',
+    });
     setPanCardImage({ url: URL.createObjectURL(file), name: file.name });
     setIsExtractingPan(true);
     const toastId = toast.loading(`Scanning ${file.name} with OCR model...`);
@@ -1071,13 +1233,17 @@ export default function GovVerificationPage() {
       formData.append('document_type', 'pan');
       formData.append('file', file);
       const upRes = await uploadDocument(formData);
+      console.log('[GovVerification] Uploaded document:', {
+        applicationId: selectedAppId,
+        documentType: 'pan',
+        documentId: upRes.data.id,
+      });
       const procRes = await processDocument(upRes.data.id);
       const doc = procRes.data;
       const fn = doc.file_path ? doc.file_path.split(/[/\\]/).pop() : file.name;
       setPanCardImage({ id: doc.id, url: `/uploads/${fn}`, name: doc.original_name || file.name });
 
       let num = '', src = 'none', name = '', nameConf = null;
-      let address = '', dob = '', gender = '';
       let qualWarn = null, confLvl = null, confScr = null, warn = null;
       const ocrText = doc.extracted_text || '';
       if (doc.structured_data) {
@@ -1093,9 +1259,6 @@ export default function GovVerificationPage() {
           const f = sd.fields.applicant_name;
           if (f.value) { name = f.value; nameConf = f.confidence_level || (f.confidence >= 0.75 ? 'high' : 'low'); }
         } else if (sd.applicant_name) { name = sd.applicant_name; nameConf = 'high'; }
-        address = sd.fields?.address?.value || sd.address || '';
-        dob = sd.fields?.dob?.value || sd.dob || '';
-        gender = sd.fields?.gender?.value || sd.gender || '';
       }
 
       setPanNumber(num); setPanSource(src); setPanName(name); setPanOcrText(ocrText); setPanNameConfidence(nameConf);
@@ -1125,7 +1288,6 @@ export default function GovVerificationPage() {
     }
   };
 
-  // Removes ONLY the PAN card + its OCR data. The verification screenshot is not touched.
   const handleClearPanCard = async () => {
     const docId = panCardImage?.id;
     if (panCardImage?.url?.startsWith('blob:')) URL.revokeObjectURL(panCardImage.url);
@@ -1288,9 +1450,11 @@ export default function GovVerificationPage() {
         {/* Card body */}
         <div className="px-6 py-6 space-y-5">
 
-          {/* Step A: original card upload -> OCR extraction */}
+          {/* Borrower KYC Document: Aadhaar Card */}
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Aadhaar Card</label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+              Borrower KYC Document: Aadhaar Card
+            </label>
             <ScreenshotDropzone
               screenshot={aadhaarCardImage}
               onFileAccepted={handleAadhaarCardAccepted}
@@ -1321,6 +1485,9 @@ export default function GovVerificationPage() {
             <ExtractedField
               label="Applicant Aadhaar Number"
               value={aadhaarNumber}
+              displayValue={formatAadhaarDisplay(aadhaarNumber, maskAadhaar)}
+              onToggleMask={() => setMaskAadhaar(!maskAadhaar)}
+              isMasked={maskAadhaar}
               onChange={(val) => {
                 setAadhaarNumber(val);
                 setAadhaarSource(val ? 'manual' : 'none');
@@ -1335,6 +1502,27 @@ export default function GovVerificationPage() {
               confidenceScore={aadhaarConfidenceScore}
               warningText={aadhaarFieldWarning}
             />
+            {/* Address field – shown after upload, with Vision badge if applicable */}
+            {(aadhaarAddress || isExtractingAadhaar) && (
+              <div className="sm:col-span-2">
+                <ExtractedField
+                  label="Applicant Address"
+                  value={aadhaarAddress}
+                  onChange={(val) => {
+                    setAadhaarAddress(val);
+                    setAadhaarAddressMethod(val ? 'manual' : '');
+                    saveGovCache(selectedAppId, { aadhaarAddress: val, aadhaarAddressMethod: val ? 'manual' : '' });
+                  }}
+                  source={aadhaarAddressMethod || (aadhaarAddress ? 'aadhaar' : '')}
+                  warningText={aadhaarAddressWarning}
+                  loading={isExtractingAadhaar}
+                  loadingText="Extracting address…"
+                  missingText="Address not detected — enter manually if needed"
+                  placeholder="Address will be extracted from Aadhaar card"
+                  multiline
+                />
+              </div>
+            )}
           </div>
 
           {/* Full-document OCR text */}
@@ -1440,9 +1628,11 @@ export default function GovVerificationPage() {
         {/* Card body */}
         <div className="px-6 py-6 space-y-5">
 
-          {/* Step A: original card upload -> OCR extraction */}
+          {/* Borrower KYC Document: PAN Card */}
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">PAN Card</label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+              Borrower KYC Document: PAN Card
+            </label>
             <ScreenshotDropzone
               screenshot={panCardImage}
               onFileAccepted={handlePanCardAccepted}
@@ -1475,6 +1665,9 @@ export default function GovVerificationPage() {
             <ExtractedField
               label="Applicant Aadhaar Number"
               value={aadhaarNumber}
+              displayValue={formatAadhaarDisplay(aadhaarNumber, maskAadhaar)}
+              onToggleMask={() => setMaskAadhaar(!maskAadhaar)}
+              isMasked={maskAadhaar}
               onChange={(val) => {
                 setAadhaarNumber(val);
                 setAadhaarSource(val ? 'manual' : 'none');

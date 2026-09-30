@@ -15,6 +15,10 @@ from app.services.preprocessing import preprocess_image
 from app.services.ocr_service import extract_text, run_multipass_ocr
 from app.services.nlp_service import extract_information
 from app.services.classification_service import classify_document
+from app.services.gemini_vision_service import (
+    should_use_vision_fallback,
+    extract_aadhaar_address_via_gemini,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -39,7 +43,8 @@ async def upload_document(
     app = db.query(Application).filter(Application.id == application_id).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
-    if current_user.role != "admin" and app.user_id != current_user.id:
+    # Validate application ownership/access (admin and loan_officer can upload documents)
+    if current_user.role not in ("admin", "loan_officer"):
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Validate file extension
@@ -80,7 +85,7 @@ async def upload_document(
 
 
 @router.post("/process/{document_id}", response_model=DocumentOut)
-async def process_document(
+def process_document(
     document_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -111,8 +116,102 @@ async def process_document(
 
         # 2. Multi-pass consensus and field-level confidence extraction
         structured_data = extract_information(multipass_result, doc_type=doc.document_type.value)
-        doc.structured_data = json.dumps(structured_data)
 
+        # 3. Aadhaar address quality gate – Gemini Vision fallback
+        #    Triggered only when the OCR address is missing or garbled.
+        #    Does NOT affect any other fields.
+        if doc.document_type.value == "aadhaar":
+            ocr_address = structured_data.get("address")
+            if should_use_vision_fallback(ocr_address, doc.file_path):
+                logger.info(
+                    f"Document {document_id}: OCR address quality insufficient – "
+                    f"invoking Gemini Vision address fallback"
+                )
+                vision_address = extract_aadhaar_address_via_gemini(
+                    doc.file_path,
+                    applicant_name=structured_data.get("applicant_name") or structured_data.get("name"),
+                    aadhaar_number=structured_data.get("aadhaar_number"),
+                )
+                if vision_address:
+                    structured_data["address"] = vision_address
+                    if "fields" not in structured_data:
+                        structured_data["fields"] = {}
+                    structured_data["fields"]["address"] = {
+                        "value": vision_address,
+                        "confidence": 0.88,
+                        "confidence_level": "high",
+                        "source_document": "aadhaar",
+                        "extraction_method": "gemini_vision_fallback",
+                        "validation_status": "valid",
+                        "raw_match": vision_address,
+                        "warning": None,
+                    }
+                    logger.info(
+                        f"Document {document_id}: Gemini Vision address set "
+                        f"({len(vision_address)} chars)"
+                    )
+                else:
+                    logger.warning(
+                        f"Document {document_id}: Gemini Vision address fallback "
+                        f"returned nothing – retaining OCR result with warning"
+                    )
+                    if "fields" not in structured_data:
+                        structured_data["fields"] = {}
+                    if "address" not in structured_data["fields"]:
+                        structured_data["fields"]["address"] = {"value": ocr_address or ""}
+                    structured_data["fields"]["address"]["warning"] = (
+                        "⚠ Address could not be confidently extracted — enter manually"
+                    )
+                    structured_data["fields"]["address"]["confidence_level"] = "low"
+                    structured_data["fields"]["address"]["extraction_method"] = "ocr_low_confidence"
+
+            # Preserve all original fields and ensure canonical & alias compatibility:
+            # 1. Name: ensure both 'applicant_name' and 'name' are present and synchronized
+            name_val = structured_data.get("applicant_name") or structured_data.get("name")
+            if name_val:
+                structured_data["applicant_name"] = name_val
+                structured_data["name"] = name_val
+                if "fields" in structured_data:
+                    name_meta = structured_data["fields"].get("applicant_name") or structured_data["fields"].get("name")
+                    if name_meta:
+                        structured_data["fields"]["applicant_name"] = name_meta
+                        structured_data["fields"]["name"] = name_meta
+
+            # 2. Aadhaar Number: preserve and ensure all alias keys are populated
+            aadhaar_val = (
+                structured_data.get("aadhaar_number")
+                or structured_data.get("aadhaar")
+                or structured_data.get("aadhaar_no")
+                or structured_data.get("uid")
+            )
+            if aadhaar_val:
+                structured_data["aadhaar_number"] = aadhaar_val
+                structured_data["aadhaar"] = aadhaar_val
+                structured_data["aadhaar_no"] = aadhaar_val
+                structured_data["uid"] = aadhaar_val
+                if "fields" in structured_data:
+                    aadhaar_meta = (
+                        structured_data["fields"].get("aadhaar_number")
+                        or structured_data["fields"].get("aadhaar")
+                        or structured_data["fields"].get("aadhaar_no")
+                        or structured_data["fields"].get("uid")
+                    )
+                    if aadhaar_meta:
+                        for k_alias in ["aadhaar_number", "aadhaar", "aadhaar_no", "uid"]:
+                            structured_data["fields"][k_alias] = aadhaar_meta
+
+            # 3. Father's Name: ensure both 'father_name' and 'father\'s_name' are populated
+            father_val = structured_data.get("father_name") or structured_data.get("father's_name")
+            if father_val:
+                structured_data["father_name"] = father_val
+                structured_data["father's_name"] = father_val
+                if "fields" in structured_data:
+                    father_meta = structured_data["fields"].get("father_name") or structured_data["fields"].get("father's_name")
+                    if father_meta:
+                        structured_data["fields"]["father_name"] = father_meta
+                        structured_data["fields"]["father's_name"] = father_meta
+
+        doc.structured_data = json.dumps(structured_data)
         doc.processed = 2
         db.commit()
         logger.info(f"Multi-pass OCR complete for document {document_id}: {len(doc.extracted_text)} chars")
@@ -127,6 +226,10 @@ async def process_document(
             db.commit()
         except Exception as e2:
             logger.error(f"Fallback OCR also failed for {document_id}: {e2}")
+            doc.processed = 3  # Processing failed / requires review
+            if not doc.structured_data:
+                doc.structured_data = json.dumps({"status": "processing_failed", "error": str(e2)})
+            db.commit()
             raise HTTPException(status_code=500, detail="Document processing failed")
 
     db.refresh(doc)
@@ -153,7 +256,7 @@ def delete_documents_by_type(
     app = db.query(Application).filter(Application.id == application_id).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
-    if current_user.role != "admin" and app.user_id != current_user.id:
+    if current_user.role not in ("admin", "loan_officer"):
         raise HTTPException(status_code=403, detail="Access denied")
 
     docs = db.query(Document).filter(
@@ -207,8 +310,7 @@ def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    app = db.query(Application).filter(Application.id == doc.application_id).first()
-    if app and current_user.role != "admin" and app.user_id != current_user.id:
+    if current_user.role not in ("admin", "loan_officer"):
         raise HTTPException(status_code=403, detail="Access denied")
 
     app_id = doc.application_id
@@ -260,11 +362,12 @@ def delete_document(
             gv.pan_aadhaar_link_status = "Pending"
             gv.screenshot_path = None
 
-    if app:
+    app_record = db.query(Application).filter(Application.id == app_id).first()
+    if app_record:
         if doc_type_val == "aadhaar":
-            app.aadhaar_number = None
+            app_record.aadhaar_number = None
         elif doc_type_val == "pan":
-            app.pan_number = None
+            app_record.pan_number = None
 
     db.commit()
     logger.info(f"Document {document_id} and all {doc_type_val} documents for app {app_id} deleted successfully")

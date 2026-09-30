@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle, XCircle, AlertTriangle, Play, Loader,
-  Bot, Cpu, Users, ChevronRight, Info
+  Bot, Users, ChevronRight, Info, FileEdit
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getApplications, getApplication, getDocuments, runVerification, runAgenticVerification } from '../services/api';
+import { getApplications, getApplication, getDocuments, runAgenticVerification } from '../services/api';
 import ScoreGauge from '../components/ui/ScoreGauge';
 import StatusBadge from '../components/ui/StatusBadge';
 
@@ -13,13 +14,13 @@ const AGENT_PIPELINE = [
   { key: 'extraction_specialist', label: 'Agent 2',  full: 'Extraction Specialist',  desc: 'NLP information extraction' },
   { key: 'verification_officer',  label: 'Agent 3',  full: 'Verification Officer',    desc: 'Eligibility & identity rules' },
   { key: 'fraud_investigator',    label: 'Agent 4',  full: 'Fraud Investigator',      desc: 'Risk scoring & alerts' },
-  { key: 'compliance_reporter',   label: 'Agent 5',  full: 'Compliance Reporter',     desc: 'Final decision & PDF report' },
+  { key: 'compliance_reporter',   label: 'Agent 5',  full: 'Compliance Reporter',     desc: 'Final decision & compliance synthesis' },
 ];
 
 export default function VerifyPage() {
+  const navigate              = useNavigate();
   const [apps, setApps]       = useState([]);
   const [appId, setAppId]     = useState('');
-  const [mode, setMode]       = useState('rule_based');
   const [result, setResult]   = useState(null);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -103,7 +104,13 @@ export default function VerifyPage() {
       const screenshotUploaded = govVer ? (!!govVer.aadhaar_screenshot_path || !!govVer.screenshot_path) : false;
 
       // Site verification images logic
-      const hasSiteImage = docs.some(d => d.document_type.startsWith('geo_site_'));
+      const SITE_DOCUMENT_TYPES = new Set([
+        'site_front_view',
+        'site_side_view',
+        'site_interior',
+        'site_entrance',
+      ]);
+      const hasSiteImage = docs.some(d => SITE_DOCUMENT_TYPES.has(d.document_type));
       const siteVerification = hasSiteImage;
 
       setReadiness({
@@ -136,11 +143,9 @@ export default function VerifyPage() {
     setLoading(true);
     setResult(null);
     try {
-      const { data } = mode === 'agentic'
-        ? await runAgenticVerification(appId)
-        : await runVerification(appId);
+      const { data } = await runAgenticVerification(appId);
       setResult(data);
-      toast.success(mode === 'agentic' ? 'Multi-agent verification complete!' : 'Verification complete!');
+      toast.success('Multi-agent verification complete!');
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Verification failed');
     } finally { setLoading(false); }
@@ -180,50 +185,41 @@ export default function VerifyPage() {
           </select>
         </div>
 
-        {/* Mode selection */}
+        {/* Verification Pipeline Display */}
         <div>
-          <label className='block text-sm font-medium text-slate-700 mb-2'>Verification Mode</label>
-          <div className='flex flex-col sm:flex-row gap-3'>
-            <button type='button' onClick={() => setMode('rule_based')}
-              className={`flex-1 flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all ${mode === 'rule_based' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
-              <Cpu className={`w-5 h-5 mt-0.5 flex-shrink-0 ${mode === 'rule_based' ? 'text-blue-600' : 'text-slate-400'}`} />
-              <div>
-                <p className='text-sm font-semibold text-slate-800'>Rule-Based Pipeline</p>
-                <p className='text-xs text-slate-500 mt-0.5'>Fast, deterministic. OCR → NLP → rules → fraud checks → PDF.</p>
-              </div>
-            </button>
-            <button type='button' onClick={() => setMode('agentic')}
-              className={`flex-1 flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all ${mode === 'agentic' ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
-              <Users className={`w-5 h-5 mt-0.5 flex-shrink-0 ${mode === 'agentic' ? 'text-purple-600' : 'text-slate-400'}`} />
+          <label className='block text-sm font-medium text-slate-700 mb-2'>Verification Pipeline</label>
+          <div className='p-4 rounded-xl border-2 border-purple-500 bg-purple-50/50'>
+            <div className='flex items-start gap-3'>
+              <Users className='w-5 h-5 mt-0.5 flex-shrink-0 text-purple-600' />
               <div>
                 <p className='text-sm font-semibold text-slate-800 flex items-center gap-2'>
-                  Multi-Agent (CrewAI) <Bot className='w-3.5 h-3.5 text-purple-500' />
+                  Multi-Agent Verification (CrewAI) <Bot className='w-3.5 h-3.5 text-purple-500' />
                 </p>
-                <p className='text-xs text-slate-500 mt-0.5'>5 specialised AI agents collaborate and explain their decisions.</p>
+                <p className='text-xs text-slate-500 mt-0.5'>
+                  5 specialised AI agents collaborate to verify documents, extract profiles, check policies, scrutinize fraud, and synthesize compliance findings.
+                </p>
               </div>
-            </button>
-          </div>
-        </div>
+            </div>
 
-        {/* Agent pipeline display */}
-        {mode === 'agentic' && (
-          <div>
-            <p className='text-xs font-medium text-slate-500 uppercase tracking-wide mb-2'>Agent Pipeline</p>
-            <div className='flex flex-wrap items-center gap-1'>
-              {AGENT_PIPELINE.map((agent, i) => (
-                <React.Fragment key={agent.key}>
-                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${loading ? 'bg-purple-50 border-purple-200 text-purple-700 animate-pulse' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
-                    title={`${agent.full}: ${agent.desc}`}>
-                    <Bot className='w-3 h-3' />
-                    <span className='font-bold'>{agent.label}</span>
-                    <span className='hidden sm:inline text-slate-400'>– {agent.full}</span>
-                  </div>
-                  {i < AGENT_PIPELINE.length - 1 && <ChevronRight className='w-3 h-3 text-slate-300' />}
-                </React.Fragment>
-              ))}
+            {/* Agent pipeline display */}
+            <div className='mt-4 pt-3 border-t border-purple-100'>
+              <p className='text-xs font-medium text-slate-500 uppercase tracking-wide mb-2'>5-Agent Pipeline</p>
+              <div className='flex flex-wrap items-center gap-1.5'>
+                {AGENT_PIPELINE.map((agent, i) => (
+                  <React.Fragment key={agent.key}>
+                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${loading ? 'bg-purple-100 border-purple-300 text-purple-800 animate-pulse' : 'bg-white border-purple-200 text-slate-700 shadow-sm'}`}
+                      title={`${agent.full}: ${agent.desc}`}>
+                      <Bot className='w-3 h-3 text-purple-600' />
+                      <span className='font-bold'>{agent.label}</span>
+                      <span className='hidden sm:inline text-slate-500'>– {agent.full}</span>
+                    </div>
+                    {i < AGENT_PIPELINE.length - 1 && <ChevronRight className='w-3 h-3 text-purple-300' />}
+                  </React.Fragment>
+                ))}
+              </div>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Verification Readiness Checklist */}
         {appId && (
@@ -259,23 +255,13 @@ export default function VerifyPage() {
         <button onClick={handleVerify} disabled={loading || !appId || (!isReady && !checking)}
           className={`btn-primary flex items-center gap-2 mt-4 ${(!isReady || checking) ? 'opacity-50 cursor-not-allowed' : ''}`}>
           {loading ? <Loader className='w-4 h-4 animate-spin' /> : <Play className='w-4 h-4' />}
-          {loading ? (mode === 'agentic' ? 'Agents working…' : 'Verifying…') : 'Run Verification'}
+          {loading ? 'Agents working…' : 'Run Verification'}
         </button>
       </div>
 
       {/* Results */}
       {result && (
         <div className='space-y-4'>
-          {/* Mode badge */}
-          {result.verification_mode && (
-            <div className='flex items-center gap-2'>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${result.verification_mode === 'agentic' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
-                {result.verification_mode === 'agentic' ? <Bot className='w-3.5 h-3.5' /> : <Cpu className='w-3.5 h-3.5' />}
-                {result.verification_mode === 'agentic' ? 'Multi-Agent (CrewAI)' : 'Rule-Based'}
-              </span>
-            </div>
-          )}
-
           {/* Agent summary */}
           {result.agent_summary && (
             <div className='card border-l-4 border-purple-400 bg-purple-50/40'>
@@ -310,6 +296,23 @@ export default function VerifyPage() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Action to Review Report (Phase 8 Authoritative Pipeline) */}
+          <div className='card bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 flex flex-col sm:flex-row items-center justify-between gap-4 p-4'>
+            <div>
+              <h4 className='font-semibold text-slate-800 text-sm'>Verification Findings Recorded</h4>
+              <p className='text-xs text-slate-600 mt-0.5'>
+                Multi-agent verification results and findings have been normalized and saved. Proceed to the 26-particular report review to inspect, edit, or publish the final PDF.
+              </p>
+            </div>
+            <button
+              type='button'
+              onClick={() => navigate(`/report/${appId}/review`)}
+              className='btn-primary flex items-center gap-2 whitespace-nowrap shadow-sm text-sm py-2 px-4'
+            >
+              <FileEdit className='w-4 h-4' /> Review &amp; Edit Report
+            </button>
           </div>
         </div>
       )}

@@ -9,6 +9,7 @@ import re, logging
 from typing import Dict, Any, Optional, Union
 from app.services.parsers.aadhaar_parser import parse_aadhaar, parse_aadhaar_multipass
 from app.services.parsers.pan_parser import parse_pan, parse_pan_multipass, extract_pan_candidates
+from app.services.parsers.income_parser import parse_salary_slip, parse_form_16
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +64,15 @@ def extract_information_multipass(ocr_result: Dict[str, Any], doc_type: str = "g
         parsed_fields = parse_aadhaar_multipass(passes)
     elif doc_type == "pan":
         parsed_fields = parse_pan_multipass(passes)
+    elif doc_type == "salary_slip":
+        parsed_fields = parse_salary_slip(primary_text)
+    elif doc_type == "form_16":
+        parsed_fields = parse_form_16(primary_text)
     else:
         parsed_fields = {}
 
     for k, meta in parsed_fields.items():
-        if meta and meta.get("value"):
+        if meta and meta.get("value") is not None:
             info[k] = meta["value"]
 
     info["fields"] = parsed_fields
@@ -77,14 +82,20 @@ def extract_information_multipass(ocr_result: Dict[str, Any], doc_type: str = "g
         if isinstance(meta, dict)
     }
 
-    # If any generic fields missing, run standard regex passes on primary text
+    # If any fields missing or low-confidence, run standard regex passes on primary text
     if primary_text:
         fallback_res = extract_information(primary_text, doc_type=doc_type)
-        for k in ["dob", "gender", "father_name", "phone", "monthly_income", "bank_account", "loan_amount"]:
-            if not info.get(k) and fallback_res.get(k):
+        for k in ["aadhaar_number", "applicant_name", "address", "dob", "gender", "father_name", "phone", "employer_name", "monthly_income", "bank_account", "loan_amount", "salary_period", "designation", "pan_number", "financial_year"]:
+            if info.get(k) is None and fallback_res.get(k) is not None:
                 info[k] = fallback_res[k]
                 if fallback_res.get("fields", {}).get(k):
                     info["fields"][k] = fallback_res["fields"][k]
+
+    # Synchronize name and applicant_name canonical aliases
+    if info.get("applicant_name") and not info.get("name"):
+        info["name"] = info["applicant_name"]
+    elif info.get("name") and not info.get("applicant_name"):
+        info["applicant_name"] = info["name"]
 
     return info
 
@@ -126,10 +137,14 @@ def extract_information(text_or_result: Union[str, Dict[str, Any]], doc_type: st
         parsed_fields = parse_aadhaar(text)
     elif doc_type == "pan":
         parsed_fields = parse_pan(text)
+    elif doc_type == "salary_slip":
+        parsed_fields = parse_salary_slip(text)
+    elif doc_type == "form_16":
+        parsed_fields = parse_form_16(text)
 
     # Populate from parser
     for k, meta in parsed_fields.items():
-        if meta and meta.get("value"):
+        if meta and meta.get("value") is not None:
             info[k] = meta["value"]
 
     info["fields"] = parsed_fields

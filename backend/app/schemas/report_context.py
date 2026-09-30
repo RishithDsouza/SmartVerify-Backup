@@ -14,6 +14,7 @@ class FactProvenance(BaseModel):
     source: str = Field(..., description="Database source table/entity, e.g. 'applications', 'joint_applicants'")
     source_id: Optional[str] = Field(None, description="Database record identifier, e.g. 'app:10', 'ja:2'")
     particular_ids: List[str] = Field(default_factory=list, description="Associated report Particular IDs, e.g. ['P1', 'P3']")
+    party_id: Optional[str] = Field(None, description="Associated party ID, e.g. 'applicant', 'guarantor:1'")
 
 
 class NormalizedParty(BaseModel):
@@ -70,6 +71,9 @@ class NormalizedGovVerification(BaseModel):
     screenshots: List[GovernmentScreenshotMeta] = Field(default_factory=list)
 
 
+from app.schemas.fraud_remarks import DocumentFraudRemarksSection
+
+
 class NormalizedFinding(BaseModel):
     finding_id: int
     particular_id: Optional[str] = None
@@ -81,6 +85,7 @@ class NormalizedFinding(BaseModel):
     source: str = "application_findings"
     linked_document_ids: List[int] = Field(default_factory=list)
     party_id: Optional[str] = None
+    evidence: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ParticularContextFact(BaseModel):
@@ -135,4 +140,5 @@ class ReportContext(BaseModel):
     site_verification: Dict[str, Any] = Field(default_factory=dict)
     property_details: Dict[str, Any] = Field(default_factory=dict)
     missing_information: List[MissingParticularInfo] = Field(default_factory=list)
+    fraud_remarks: DocumentFraudRemarksSection = Field(default_factory=DocumentFraudRemarksSection)
     input_hash: str = Field(..., description="Deterministic SHA-256 digest of normalized context facts")

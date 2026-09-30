@@ -42,6 +42,11 @@ def _resolve_party_name_map(context: ReportContext) -> Dict[str, str]:
             name_map[f"joint_applicant:{idx}"] = g.name
             name_map[f"guarantor:{idx}"] = g.name
             name_map[f"co_applicant:{idx}"] = g.name
+            if ":" in g.party_id:
+                p_idx = g.party_id.split(":")[-1]
+                name_map[f"joint_applicant:{p_idx}"] = g.name
+                name_map[f"guarantor:{p_idx}"] = g.name
+                name_map[f"co_applicant:{p_idx}"] = g.name
 
     return name_map
 
@@ -50,14 +55,15 @@ def _is_applicant_party(party_id: Optional[str]) -> bool:
     """Returns True if the party_id explicitly designates the primary applicant."""
     if not party_id:
         return False
-    return party_id == "applicant"
+    return party_id.strip().lower() == "applicant"
 
 
 def _is_guarantor_party(party_id: Optional[str]) -> bool:
     """Returns True if the party_id designates a co-applicant or guarantor."""
     if not party_id:
         return False
-    return party_id != "applicant"
+    p = party_id.strip().lower()
+    return p != "applicant" and ("guarantor" in p or "joint_applicant" in p or "co_applicant" in p)
 
 
 def _build_doc_reference(
@@ -210,8 +216,11 @@ def map_evidence(
     # Residence / Site Document Types
     residence_doc_types = {
         "residence_proof", "house_photograph", "site_front_view",
-        "site_side_view", "site_interior", "site_entrance",
-        "property_image", "sale_deed", "tax_receipt", "encumbrance_cert"
+        "site_side_view", "site_interior", "site_entrance", "site_landmark",
+        "property_image", "sale_deed", "tax_receipt", "encumbrance_cert",
+        "building_plan", "ownership_proof",
+        "geo_site_front_view", "geo_site_side_view", "geo_site_interior",
+        "geo_site_entrance", "geo_site_landmark"
     }
     # Bank Document Types
     bank_doc_types = {"bank_statement"}
@@ -258,7 +267,9 @@ def map_evidence(
             # Physical visit confirmation & site visit photographs
             site_photo_types = {
                 "site_front_view", "site_side_view", "site_interior",
-                "site_entrance", "house_photograph", "property_image", "residence_proof"
+                "site_entrance", "site_landmark", "house_photograph", "property_image", "residence_proof",
+                "geo_site_front_view", "geo_site_side_view", "geo_site_interior",
+                "geo_site_entrance", "geo_site_landmark"
             }
             for d in context.documents:
                 if d.document_type in site_photo_types:
@@ -271,7 +282,7 @@ def map_evidence(
         elif pid == "P2B":
             # Visiting official and date of visit evidence
             for d in context.documents:
-                if d.document_type in {"site_front_view", "site_side_view", "house_photograph"}:
+                if d.document_type in {"site_front_view", "site_side_view", "house_photograph", "geo_site_front_view", "geo_site_side_view"}:
                     add_ref(_build_doc_reference(d, pid, "residence_evidence", party_name_map))
 
             for f in context.findings:
@@ -286,7 +297,10 @@ def map_evidence(
 
         elif pid == "P2D":
             # Status of residence / tenure proof
-            tenure_doc_types = {"residence_proof", "sale_deed", "tax_receipt", "encumbrance_cert"}
+            tenure_doc_types = {
+                "residence_proof", "sale_deed", "tax_receipt", "encumbrance_cert",
+                "building_plan", "ownership_proof"
+            }
             for d in context.documents:
                 if d.document_type in tenure_doc_types:
                     add_ref(_build_doc_reference(d, pid, "residence_evidence", party_name_map))
@@ -495,9 +509,9 @@ def map_evidence(
         shared_ev: List[EvidenceReference] = []
 
         for ref in sorted_evidence:
-            if ref.party_id == "applicant":
+            if _is_applicant_party(ref.party_id):
                 applicant_ev.append(ref)
-            elif ref.party_id is not None:
+            elif _is_guarantor_party(ref.party_id):
                 guarantor_ev.append(ref)
             else:
                 shared_ev.append(ref)

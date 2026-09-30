@@ -24,6 +24,7 @@ const APPLICANT_DOCS = [
 const EMPLOYMENT_DOCS = [
   { value: 'salary_slip',     label: 'Salary Slip' },
   { value: 'form_16',         label: 'Form 16' },
+  { value: 'bank_statement',   label: 'Bank Statement' },
 ];
 
 const PROPERTY_DOCS = [
@@ -47,6 +48,25 @@ const JOINT_DOC_TYPES = [
   { value: 'pan',             label: 'PAN Card' },
   { value: 'salary_slip',     label: 'Salary Slip' },
 ];
+
+const parseBackendError = (err) => {
+  const detail = err.response?.data?.detail;
+  if (!detail) {
+    return err.message || 'Unknown server error';
+  }
+  if (typeof detail === 'string') {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => d.msg || (typeof d === 'string' ? d : JSON.stringify(d)))
+      .join(', ');
+  }
+  if (typeof detail === 'object') {
+    return detail.msg || detail.message || JSON.stringify(detail);
+  }
+  return String(detail);
+};
 
 // ─── Dropzone helper ──────────────────────────────────────────────────────────
 
@@ -81,23 +101,43 @@ function DocDropzone({ label, docType, applicationId, jointIndex, existingDoc, o
   const handleUpload = async () => {
     if (!file) return;
     setUploading(true);
+    let uploadedDoc = null;
     try {
       const fd = new FormData();
       fd.append('application_id', applicationId);
       fd.append('document_type', docType);
       if (jointIndex !== undefined) fd.append('joint_applicant_index', jointIndex);
       fd.append('file', file);
-      const { data: doc } = await uploadDocument(fd);
-      await processDocument(doc.id);
       
+      const { data: doc } = await uploadDocument(fd);
+      uploadedDoc = doc;
+    } catch (err) {
+      const reason = parseBackendError(err);
+      toast.error(`Failed to upload ${label}: ${reason}`);
+      setUploading(false);
+      return;
+    }
+
+    try {
+      if (uploadedDoc?.id) {
+        const { data: procDoc } = await processDocument(uploadedDoc.id);
+        if (procDoc?.processed === 3) {
+          toast.error('Document uploaded, but processing requires review');
+        } else {
+          toast.success(`${label} uploaded and processed successfully!`);
+        }
+      } else {
+        toast.success(`${label} uploaded successfully!`);
+      }
       setFile(null);
       setReplacing(false);
-      toast.success(`${label} uploaded successfully!`);
-      if (onUploaded) onUploaded();
     } catch (err) {
-      toast.error(err.response?.data?.detail || `Failed to upload ${label}`);
-    } finally { 
-      setUploading(false); 
+      toast.error('Document uploaded, but processing requires review');
+      setFile(null);
+      setReplacing(false);
+    } finally {
+      if (onUploaded) onUploaded();
+      setUploading(false);
     }
   };
 

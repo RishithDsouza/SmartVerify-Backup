@@ -194,3 +194,148 @@ class MockLLMProvider(LLMProvider):
             "missing_information": [],
         }
         return json.dumps(default_payload)
+
+
+def mask_secrets(text: Any) -> str:
+    """
+    Sanitize text by redacting API keys and sensitive tokens.
+    Prevents leaking credentials in logs, console output, or error messages.
+    """
+    if text is None:
+        return ""
+    s = str(text)
+
+    # 1. Redact exact known secrets from settings & env if configured
+    known_keys = set()
+    for attr in ("GROQ_API_KEY", "groq_api_key", "GEMINI_API_KEY", "gemini_api_key", "GOOGLE_API_KEY", "SECRET_KEY"):
+        val = getattr(settings, attr, None) or os.environ.get(attr)
+        if val and isinstance(val, str) and len(val.strip()) >= 8:
+            known_keys.add(val.strip())
+
+    for key in known_keys:
+        if key in s:
+            s = s.replace(key, "[REDACTED_API_KEY]")
+
+    # 2. Redact patterns: Groq (gsk_...), Google (AIza... or AQ....), Bearer tokens
+    import re
+    s = re.sub(r"gsk_[A-Za-z0-9_-]{10,}", "[REDACTED_GROQ_KEY]", s)
+    s = re.sub(r"AIza[0-9A-Za-z_-]{25,}", "[REDACTED_GEMINI_KEY]", s)
+    s = re.sub(r"AQ\.[A-Za-z0-9_-]{20,}", "[REDACTED_GEMINI_KEY]", s)
+    s = re.sub(r"(Bearer\s+)[A-Za-z0-9._-]{15,}", r"\1[REDACTED_TOKEN]", s)
+    s = re.sub(r"([?&]key=)[^&\s]+", r"\1[REDACTED_KEY]", s)
+
+    return s
+
+
+def is_retryable_provider_error(exc: Exception) -> tuple[bool, str]:
+    """
+    Determine if an exception represents a transient provider failure:
+    - HTTP 429 / rate limit / quota exceeded
+    - HTTP 5xx temporary server errors (500, 502, 503, 504)
+    - Timeout / network connection failure
+
+    Returns:
+        (is_retryable, sanitized_reason_str)
+
+    Explicitly excludes:
+    - Ordinary application errors (ValueError, KeyError, TypeError)
+    - Invalid structured output / parsing errors (JSONDecodeError, ValidationError)
+    """
+    if exc is None:
+        return False, "No exception"
+
+    # 1. Check for non-retryable application/parsing errors first
+    non_retryable_types = (
+        ValueError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        json.JSONDecodeError,
+    )
+    try:
+        from pydantic import ValidationError as PydanticValidationError
+        non_retryable_types = non_retryable_types + (PydanticValidationError,)
+    except ImportError:
+        pass
+
+    # Inspect status code if present directly or on response
+    status_code = getattr(exc, "status_code", None) or getattr(exc, "http_status", None)
+    if status_code is None and hasattr(exc, "response") and hasattr(exc.response, "status_code"):
+        status_code = exc.response.status_code
+
+    # Extract all text from exception, cause, and args
+    err_str = f"{type(exc).__name__}: {str(exc)}"
+    if getattr(exc, "__cause__", None):
+        err_str += f" | Cause: {type(exc.__cause__).__name__}: {str(exc.__cause__)}"
+
+    sanitized = mask_secrets(err_str)
+    lower = sanitized.lower()
+
+    # 2. Explicitly reject authentication/permission errors (HTTP 401, 403, or auth messages)
+    if status_code in (401, 403):
+        return False, f"authentication error (HTTP {status_code}): {sanitized}"
+    if any(k in lower for k in (
+        "api_key_invalid", "invalid_api_key", "invalid api key", "unauthorized",
+        "authentication failed", "permission denied", "forbidden", "bad credentials",
+        "unauthenticated", "api key not valid"
+    )):
+        return False, f"authentication error: {sanitized}"
+
+    # 3. Explicitly reject malformed requests or invalid model errors (HTTP 400, 404, or model messages)
+    if status_code == 400:
+        return False, f"malformed request error (HTTP 400): {sanitized}"
+    if status_code == 404:
+        return False, f"invalid model error (HTTP 404): {sanitized}"
+    if any(k in lower for k in (
+        "model not found", "is no longer available", "does not exist",
+        "unsupported model", "invalid_argument", "tool_use_failed"
+    )):
+        return False, f"client/model error: {sanitized}"
+
+    # 4. If it is purely an application error without HTTP or provider failure markers
+    if isinstance(exc, non_retryable_types) and not any(k in lower for k in ("429", "500", "502", "503", "504", "rate limit", "quota", "timeout")):
+        return False, sanitized
+
+    # 5. Check retryable HTTP status code
+    if status_code == 429:
+        return True, f"429 rate limit: {sanitized}"
+    if status_code in (500, 502, 503, 504):
+        return True, f"{status_code} provider error: {sanitized}"
+
+    # 6. Check LiteLLM / HTTP exception class names
+    exc_cls_name = type(exc).__name__
+    if any(k in exc_cls_name for k in ("RateLimitError", "QuotaExceeded", "ResourceExhausted")):
+        return True, f"429 rate limit: {sanitized}"
+    if any(k in exc_cls_name for k in ("Timeout", "TimeOut", "ConnectTimeout", "ReadTimeout")):
+        return True, f"timeout: {sanitized}"
+    if any(k in exc_cls_name for k in ("APIConnectionError", "ConnectError", "NetworkError", "ConnectionRefusedError")):
+        return True, f"connection failure: {sanitized}"
+    if any(k in exc_cls_name for k in ("ServiceUnavailableError", "InternalServerError", "BadGatewayError")):
+        return True, f"5xx provider error: {sanitized}"
+
+    # 7. String inspection for retryable provider error keywords
+    # Rate limit & Quota
+    if any(k in lower for k in (
+        "rate limit", "rate_limit", "quota exceeded", "quota", "429",
+        "resource_exhausted", "too many requests", "tokens per minute", "tpm", "rpm"
+    )):
+        return True, f"429 rate limit: {sanitized}"
+
+    # Temporary 5xx / Service unavailable / High demand / Overloaded
+    if any(k in lower for k in (
+        "500 internal server error", "502 bad gateway", "503 service unavailable",
+        "503", "504 gateway timeout", "504", "overloaded", "high demand",
+        "temporarily unavailable", "server is busy", "capacity", "unavailable"
+    )):
+        return True, f"5xx provider error: {sanitized}"
+
+    # Timeout & Connection
+    if any(k in lower for k in (
+        "timeout", "timed out", "connection reset", "connection refused",
+        "failed to connect", "network unreachable"
+    )):
+        return True, f"timeout / connection failure: {sanitized}"
+
+    # Otherwise non-retryable
+    return False, sanitized
+

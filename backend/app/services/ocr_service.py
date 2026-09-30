@@ -294,7 +294,26 @@ def extract_text_from_image(image_path: str) -> str:
 
 
 def extract_text_from_pdf(pdf_path: str) -> str:
-    """Extract text from PDF pages."""
+    """Extract text from PDF pages using pypdf, pdfplumber, or pdf2image."""
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(pdf_path)
+        pages_text = [p.extract_text() or "" for p in reader.pages]
+        text = "\n".join(pages_text).strip()
+        if text:
+            return text
+    except Exception as e:
+        logger.warning(f"pypdf extraction failed for {pdf_path}: {e}")
+
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            text = "\n".join(p.extract_text() or "" for p in pdf.pages).strip()
+            if text:
+                return text
+    except Exception as e2:
+        logger.warning(f"pdfplumber failed: {e2}")
+
     try:
         import pdf2image
         pages = pdf2image.convert_from_path(pdf_path, dpi=200)
@@ -308,15 +327,10 @@ def extract_text_from_pdf(pdf_path: str) -> str:
             except OSError:
                 pass
         return "\n".join(texts)
-    except Exception as e:
-        logger.error(f"pdf2image failed: {e}")
-        try:
-            import pdfplumber
-            with pdfplumber.open(pdf_path) as pdf:
-                return "\n".join(p.extract_text() or "" for p in pdf.pages)
-        except Exception as e2:
-            logger.error(f"pdfplumber failed: {e2}")
-            return ""
+    except Exception as e3:
+        logger.warning(f"pdf2image failed: {e3}")
+        return ""
+
 
 
 def extract_text(file_path: str) -> str:

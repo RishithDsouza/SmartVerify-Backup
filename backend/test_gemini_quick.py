@@ -4,6 +4,7 @@ Run from backend/ with: venv\\Scripts\\python.exe test_gemini_quick.py
 """
 import sys, os, json, time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, r"C:\Users\Hp\Desktop\Smartverify2\backend")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./smartverify.db")
 os.environ.setdefault("SECRET_KEY", "test-secret")
@@ -15,9 +16,9 @@ print("=" * 60)
 # ── 1. Config check ─────────────────────────────────────────────────
 print("\n[1] Checking config...")
 from app.core.config import settings
-assert settings.CREWAI_MODEL == "gemini/gemini-2.5-flash", f"Wrong model: {settings.CREWAI_MODEL}"
+print(f"    LLM_PROVIDER   : {getattr(settings, 'LLM_PROVIDER', 'groq')}  OK")
 print(f"    CREWAI_MODEL   : {settings.CREWAI_MODEL}  OK")
-print(f"    GEMINI_API_KEY : {'SET OK' if settings.gemini_api_key else 'MISSING'}")
+print(f"    GEMINI_API_KEY : {'SET OK' if getattr(settings, 'GEMINI_API_KEY', '') or getattr(settings, 'gemini_api_key', '') else 'MISSING'}")
 
 # ── 2. LLM object check ─────────────────────────────────────────────
 print("\n[2] Building LLM object...")

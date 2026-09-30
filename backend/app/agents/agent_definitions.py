@@ -23,22 +23,24 @@ from app.agents.tools import (
 logger = logging.getLogger(__name__)
 
 
-def get_llm() -> LLM:
+def get_llm(provider: str = None, model: str = None) -> LLM:
     """
     Build an LLM instance for CrewAI agents.
     Supports Groq (active default via LLM_PROVIDER="groq") and Gemini (fallback via LLM_PROVIDER="gemini").
     """
-    provider = (
-        os.environ.get("LLM_PROVIDER")
+    active_provider = (
+        provider
+        or os.environ.get("LLM_PROVIDER")
         or getattr(settings, "LLM_PROVIDER", "groq")
         or "groq"
     ).strip().lower()
 
     temperature = getattr(settings, "CREWAI_TEMPERATURE", 0.2)
 
-    if provider == "groq":
-        model = (
-            os.environ.get("GROQ_MODEL")
+    if active_provider == "groq":
+        chosen_model = (
+            model
+            or os.environ.get("GROQ_MODEL")
             or getattr(settings, "GROQ_MODEL", "")
             or getattr(settings, "CREWAI_MODEL", "")
             or "openai/gpt-oss-120b"
@@ -54,24 +56,24 @@ def get_llm() -> LLM:
             if not os.environ.get("GROQ_API_KEY"):
                 os.environ["GROQ_API_KEY"] = api_key
 
-        if model.startswith("openai/"):
+        if chosen_model.startswith("openai/"):
             llm = LLM(
-                model=model,
+                model=chosen_model,
                 temperature=temperature,
                 api_key=api_key if api_key else None,
                 base_url="https://api.groq.com/openai/v1",
             )
-            llm.model = model
+            llm.model = chosen_model
             return llm
-        elif model.startswith("groq/"):
+        elif chosen_model.startswith("groq/"):
             return LLM(
-                model=model,
+                model=chosen_model,
                 temperature=temperature,
                 api_key=api_key if api_key else None,
             )
         else:
             return LLM(
-                model=f"groq/{model}",
+                model=f"groq/{chosen_model}",
                 temperature=temperature,
                 api_key=api_key if api_key else None,
             )
@@ -93,23 +95,31 @@ def get_llm() -> LLM:
         if not os.environ.get("GOOGLE_API_KEY"):
             os.environ["GOOGLE_API_KEY"] = api_key
 
-    model = (
-        getattr(settings, "CREWAI_MODEL", "")
-        if getattr(settings, "CREWAI_MODEL", "").startswith("gemini/")
-        else getattr(settings, "GEMINI_MODEL", "gemini/gemini-3.8-flash")
-    )
-    if not model or not model.startswith("gemini/"):
-        model = "gemini/gemini-3.8-flash"
+    configured_model = (
+        model
+        or os.environ.get("GEMINI_MODEL")
+        or getattr(settings, "GEMINI_MODEL", "")
+        or "gemini-3.8-flash"
+    ).strip()
+
+    # Avoid deprecated gemini-2.5-flash (returns 404 in Google API)
+    if "gemini-2.5" in configured_model:
+        gemini_model = "gemini/gemini-3.8-flash"
+    elif configured_model.startswith("gemini/"):
+        gemini_model = configured_model
+    else:
+        gemini_model = f"gemini/{configured_model}"
 
     return LLM(
-        model=model,
+        model=gemini_model,
         temperature=temperature,
         api_key=api_key if api_key else None,
     )
 
 
-def build_agents(db_session, shared_context=None) -> dict:
-    llm = get_llm()
+def build_agents(db_session, shared_context=None, provider: str = None, model: str = None, llm: LLM = None) -> dict:
+    if llm is None:
+        llm = get_llm(provider=provider, model=model)
     memory_tool = MemoryTool(shared_context=shared_context)
     policy_tool = PolicyRetrievalTool()
     similarity_tool = SimilaritySearchTool()

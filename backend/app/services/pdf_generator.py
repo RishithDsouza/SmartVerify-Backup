@@ -46,6 +46,7 @@ from app.schemas.pdf_report import (
     PdfGenerationResult,
     PdfExportBlockedError,
 )
+from app.schemas.fraud_remarks import DocumentFraudRemarksSection, DocumentFraudRemark
 
 logger = logging.getLogger(__name__)
 
@@ -166,13 +167,13 @@ class EvidenceAssetResolver:
     @classmethod
     def resolve_asset(cls, ref: EvidenceReference) -> ResolvedEvidenceAsset:
         party_id_val = (ref.party_id or "").lower()
-        if "applicant" in party_id_val:
+        if party_id_val == "applicant":
             party_str = "APPLICANT"
-        elif "guarantor" in party_id_val:
+        elif any(k in party_id_val for k in ["guarantor", "joint_applicant", "co_applicant"]):
             party_str = "GUARANTOR"
         else:
             party_label = (ref.party_name or "").upper()
-            if "GUARANTOR" in party_label:
+            if any(k in party_label for k in ["GUARANTOR", "CO-APPLICANT", "JOINT"]):
                 party_str = "GUARANTOR"
             elif "APPLICANT" in party_label:
                 party_str = "APPLICANT"
@@ -927,7 +928,7 @@ def generate_pdf_report(request: PdfGenerationRequest) -> PdfGenerationResult:
     def _evidence_sort_key(item_tuple: Tuple[str, EvidenceReference]):
         _pid, _ref = item_tuple
         _p_id = (_ref.party_id or "").lower()
-        party_order = 1 if "applicant" in _p_id else (2 if "guarantor" in _p_id else 3)
+        party_order = 1 if _p_id == "applicant" else (2 if any(k in _p_id for k in ["guarantor", "joint_applicant", "co_applicant"]) else 3)
         _cat = (_ref.evidence_category or "").lower()
         _etype = (_ref.evidence_type or "").lower()
         if "government" in _cat or _etype == "government_screenshot":
@@ -1117,13 +1118,107 @@ def generate_pdf_report(request: PdfGenerationRequest) -> PdfGenerationResult:
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
     ]))
     status_flowables.append(sig_table)
-    status_flowables.append(Spacer(1, 4))
-    status_flowables.append(Paragraph(
+    story.append(KeepTogether(status_flowables))
+
+    # ─── 4B. DOCUMENT VERIFICATION / FRAUD REMARKS ───────────────────────────
+    # Consumes normalized fraud/document remarks from validated_report or review_state
+    fraud_remarks: DocumentFraudRemarksSection = (
+        getattr(request.validated_report, "fraud_remarks", None)
+        or getattr(request.review_state, "fraud_remarks", None)
+        or DocumentFraudRemarksSection()
+    )
+
+    fraud_section_header_style = ParagraphStyle(
+        "FraudRemarksSectionHeader",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#1E3A8A"),
+    )
+    fraud_status_review_style = ParagraphStyle(
+        "FraudStatusReview",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.HexColor("#B45309"),
+    )
+    fraud_status_clean_style = ParagraphStyle(
+        "FraudStatusClean",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.HexColor("#166534"),
+    )
+    fraud_item_style = ParagraphStyle(
+        "FraudItemStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7,
+        leading=9,
+        textColor=colors.HexColor("#1E293B"),
+    )
+
+    story.append(Spacer(1, 5))
+
+    if fraud_remarks.has_remarks and fraud_remarks.remarks:
+        status_text = fraud_remarks.status or "REVIEW REQUIRED"
+        remarks_rows = [
+            [
+                Paragraph("<b>DOCUMENT VERIFICATION / FRAUD REMARKS</b>", fraud_section_header_style),
+            ],
+            [
+                Paragraph(f"<b>Status:</b> {sanitize_pdf_text(status_text)}", fraud_status_review_style),
+            ],
+        ]
+        for idx, r in enumerate(fraud_remarks.remarks, 1):
+            doc_name_clean = sanitize_pdf_text(r.document_name)
+            reason_clean = sanitize_pdf_text(r.reason)
+            cell_content = [
+                Paragraph(f"<b>{idx}. Document:</b> {doc_name_clean}", fraud_item_style),
+                Spacer(1, 1),
+                Paragraph(f"&nbsp;&nbsp;&nbsp;<b>Remark:</b> {reason_clean}", fraud_item_style),
+            ]
+            remarks_rows.append([cell_content])
+
+        remarks_table = Table(remarks_rows, colWidths=[785])
+        remarks_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#FEF3C7")),
+            ("BACKGROUND", (0, 1), (0, 1), colors.HexColor("#FFFBEB")),
+            ("BACKGROUND", (0, 2), (-1, -1), colors.HexColor("#FFFFFF")),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#F59E0B")),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#FDE68A")),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(KeepTogether([remarks_table]))
+    else:
+        status_clean = fraud_remarks.status or "No significant document fraud indicators detected."
+        no_finding_rows = [
+            [Paragraph("<b>DOCUMENT VERIFICATION / FRAUD REMARKS</b>", fraud_section_header_style)],
+            [Paragraph(f"<b>Status:</b> {sanitize_pdf_text(status_clean)}", fraud_status_clean_style)],
+        ]
+        remarks_table = Table(no_finding_rows, colWidths=[785])
+        remarks_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(remarks_table)
+
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(
         f"<i>{sanitize_pdf_text(template.footer.confidentiality_notice)}</i>",
         ParagraphStyle("Notice", parent=styles["Normal"], fontName="Helvetica-Oblique", fontSize=7, leading=9, textColor=colors.HexColor("#64748B"), alignment=TA_CENTER)
     ))
-
-    story.append(KeepTogether(status_flowables))
 
     # 5. Build Document using Two-Pass NumberedCanvas
     doc.build(story, canvasmaker=NumberedCanvas)

@@ -15,6 +15,7 @@ VerificationReport model don't need to change shape.
 
 import json
 import logging
+import os
 import re
 from typing import Any, Dict, List
 
@@ -22,6 +23,8 @@ from crewai import Crew, Process
 
 from app.agents.agent_definitions import build_agents
 from app.agents.tasks import build_tasks
+from app.core.config import settings
+from app.services.llm_provider import is_retryable_provider_error
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +32,10 @@ logger = logging.getLogger(__name__)
 class LoanVerificationCrew:
     """Builds and runs the multi-agent loan verification crew for one application."""
 
-    def __init__(self, db_session):
+    def __init__(self, db_session, gemini_max_retries: int = 2, backoff_base: float = 1.0):
         self.db = db_session
+        self.gemini_max_retries = gemini_max_retries
+        self.backoff_base = backoff_base
 
     def run(
         self,
@@ -43,38 +48,133 @@ class LoanVerificationCrew:
         gov_verification_record: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """
-        Execute the crew end-to-end.
+        Execute the crew with automatic 3-tier provider cascade:
+        1. Primary: Groq (openai/gpt-oss-120b)
+        2. Fallback 1: Gemini (gemini-3.8-flash)
+        3. Fallback 2: Gemini (gemini-3.5-flash-lite)
 
-        `documents` is a list of dicts:
-        [{id, document_type, file_path, original_name, structured_data, extracted_text}]
-
-        Returns a dict shaped like:
+        Applies bounded exponential backoff for transient 429/5xx errors.
+        Immediately re-raises non-retryable errors (auth failures, malformed requests, application errors).
+        If all providers fail, returns a clean structured verification failure.
+        """
+        cascade_tiers = [
             {
-              "final_status": "approved" | "manual_review" | "rejected",
-              "verification_score": float,
-              "risk_score": float,
-              "fraud_flag": bool,
-              "extracted_info": {...},
-              "verification_details": {...},
-              "fraud_analysis": {...},
-              "pdf_path": str | None,
-              "summary": str,
-              "agent_trace": str,   # raw crew output for audit/debug
-            }
+                "provider": "groq",
+                "model": "openai/gpt-oss-120b",
+                "display_name": "Groq",
+                "model_display": "openai/gpt-oss-120b",
+                "is_fallback": False,
+                "max_retries": 1,
+            },
+            {
+                "provider": "gemini",
+                "model": "gemini-3.8-flash",
+                "display_name": "Gemini",
+                "model_display": "gemini-3.8-flash",
+                "is_fallback": True,
+                "max_retries": self.gemini_max_retries,
+            },
+            {
+                "provider": "gemini",
+                "model": "gemini-3.5-flash-lite",
+                "display_name": "Gemini",
+                "model_display": "gemini-3.5-flash-lite",
+                "is_fallback": True,
+                "max_retries": self.gemini_max_retries,
+            },
+        ]
+
+        tier_failures = []
+
+        for tier in cascade_tiers:
+            tier_name = tier["display_name"]
+            model_name = tier["model"]
+            model_display = tier["model_display"]
+            max_attempts = tier["max_retries"]
+
+            if not tier["is_fallback"]:
+                logger.info(f"[LLM] Primary provider: {tier_name}")
+            else:
+                logger.warning(f"[LLM] Falling back to {tier_name} ({model_display})")
+                logger.info(f"[LLM] Fallback provider: {tier_name}")
+                logger.info(f"[LLM] {tier_name} verification started (model: {model_display})")
+
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return self._execute_pipeline(
+                        provider_name=tier["provider"],
+                        model_name=tier["model"],
+                        application_id=application_id,
+                        applicant_name=applicant_name,
+                        loan_amount=loan_amount,
+                        documents=documents,
+                        loan_type=loan_type,
+                        loan_tenure=loan_tenure,
+                        gov_verification_record=gov_verification_record,
+                    )
+                except Exception as exc:
+                    is_retryable, sanitized_reason = is_retryable_provider_error(exc)
+                    if not is_retryable:
+                        logger.error(
+                            f"[LLM] {tier_name} ({model_display}) failed with non-retryable error: {sanitized_reason}"
+                        )
+                        raise
+
+                    logger.warning(f"[LLM] {tier_name} ({model_display}) request failed: {sanitized_reason}")
+
+                    if attempt < max_attempts:
+                        delay = self.backoff_base * (2 ** (attempt - 1))
+                        logger.info(
+                            f"[LLM] Retrying {tier_name} ({model_display}) in {delay:.2f}s "
+                            f"(bounded exponential backoff, attempt {attempt + 1}/{max_attempts})..."
+                        )
+                        import time
+                        time.sleep(delay)
+                        continue
+                    else:
+                        tier_failures.append(f"{tier_name} ({model_display}): {sanitized_reason}")
+                        break
+
+        failure_details = " -> ".join(tier_failures)
+        logger.error(f"[LLM] All configured providers in fallback cascade failed: {failure_details}")
+        raise RuntimeError(
+            f"Multi-Agent verification failed: All configured providers in fallback cascade failed. "
+            f"Details: {failure_details}"
+        )
+
+    def _execute_pipeline(
+        self,
+        provider_name: str,
+        model_name: str,
+        application_id: int,
+        applicant_name: str,
+        loan_amount: float,
+        documents: List[Dict[str, Any]],
+        loan_type: str = "Home Loan",
+        loan_tenure: int = 60,
+        gov_verification_record: Dict[str, Any] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute the 5-agent CrewAI pipeline with the specified LLM provider and model.
         """
         import time
         from app.agents.context import SharedAgentContext
-        
+
         # Phase 4: Shared Context
         shared_context = SharedAgentContext(
             application_id=application_id,
             applicant_name=applicant_name,
             loan_amount=loan_amount
         )
-        
+
         start_time = time.time()
-        
-        agents = build_agents(self.db, shared_context=shared_context)
+
+        agents = build_agents(
+            self.db,
+            shared_context=shared_context,
+            provider=provider_name,
+            model=model_name,
+        )
         tasks = build_tasks(
             agents,
             run_context={
@@ -123,14 +223,16 @@ class LoanVerificationCrew:
         result.setdefault("agent_findings", {})
         result.setdefault("recommendation", "")
         result.setdefault("human_review", "")
-        
+
         # New Phase 6 & 7 & 8 fields
         result.setdefault("explainable_ai", {})
         result.setdefault("confidence_score", 0.0)
         result["agent_memory"] = shared_context.agent_memory
-        
+
         shared_context.record_timing("total", time.time() - start_time)
         result["execution_timeline"] = shared_context.execution_timeline
+        result["llm_provider"] = provider_name
+        result["llm_model"] = model_name
 
         # Safety net: fraud flag always forces rejection, even if the
         # compliance reporter agent got this wrong.

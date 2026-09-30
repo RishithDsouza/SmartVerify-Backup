@@ -414,13 +414,26 @@ def validate_report(
         for eid in comp.evidence_ids:
             ref = allowed_ev_ids.get(eid)
             if ref and ref.party_id:
+                has_guarantor_statement = ("Guarantor:" in text) or ("Guarantor (" in text)
+                has_applicant_statement = ("Applicant:" in text)
+
                 # If text is strictly about applicant, guarantor evidence cannot be cited
-                if "Applicant:" in text and "Guarantor:" not in text and ref.party_id != "applicant":
+                if has_applicant_statement and not has_guarantor_statement and ref.party_id != "applicant":
                     issue = ValidationIssue(
                         code="PARTY_CONTAMINATION_GUARANTOR_IN_APPLICANT",
                         severity=ValidationSeverity.BLOCKING,
                         particular_id=pid,
                         message=f"Guarantor evidence '{eid}' cited in applicant-specific statement.",
+                        evidence_ids=[eid],
+                    )
+                    part_issues.append(issue)
+                # Symmetrically: If text is strictly about guarantor, applicant evidence cannot be cited
+                if has_guarantor_statement and not has_applicant_statement and ref.party_id == "applicant":
+                    issue = ValidationIssue(
+                        code="PARTY_CONTAMINATION_APPLICANT_IN_GUARANTOR",
+                        severity=ValidationSeverity.BLOCKING,
+                        particular_id=pid,
+                        message=f"Applicant evidence '{eid}' cited in guarantor-specific statement.",
                         evidence_ids=[eid],
                     )
                     part_issues.append(issue)
@@ -537,6 +550,9 @@ def validate_report(
     else:
         overall_status = "VALID"
 
+    from app.schemas.fraud_remarks import DocumentFraudRemarksSection
+    fraud_rem = getattr(context, "fraud_remarks", None) or DocumentFraudRemarksSection()
+
     return ValidatedReport(
         application_id=composed_report.application_id,
         template_key=composed_report.template_key,
@@ -547,4 +563,5 @@ def validate_report(
         validation_results=validation_results,
         blocking_issues=blocking_issues,
         warnings=warnings,
+        fraud_remarks=fraud_rem,
     )

@@ -18,12 +18,22 @@ class DocumentType(str, enum.Enum):
     sale_deed        = "sale_deed"
     tax_receipt      = "tax_receipt"
     encumbrance_cert = "encumbrance_cert"
+    building_plan    = "building_plan"
+    ownership_proof  = "ownership_proof"
     property_image   = "property_image"
     
     site_front_view  = "site_front_view"
     site_side_view   = "site_side_view"
     site_interior    = "site_interior"
     site_entrance    = "site_entrance"
+    site_landmark    = "site_landmark"
+
+    geo_site_front_view = "geo_site_front_view"
+    geo_site_side_view  = "geo_site_side_view"
+    geo_site_interior   = "geo_site_interior"
+    geo_site_entrance   = "geo_site_entrance"
+    geo_site_landmark   = "geo_site_landmark"
+
     # Additional Identity, Income, Asset & Chatbot types
     driving_licence  = "driving_licence"
     itr              = "itr"

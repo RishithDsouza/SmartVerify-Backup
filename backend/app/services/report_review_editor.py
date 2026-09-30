@@ -31,6 +31,7 @@ from app.schemas.report_review import (
     EvidenceSelection,
     ParticularEditRequest,
 )
+from app.schemas.fraud_remarks import DocumentFraudRemarksSection
 from app.services.report_validator import validate_report
 
 
@@ -111,12 +112,13 @@ def create_review_state(
         if ev_mapping:
             ev_ids = [ref.evidence_id for ref in ev_mapping.evidence]
             for idx, ref in enumerate(ev_mapping.evidence):
+                p_lower = str(ref.party_id or "").lower()
                 party_label = (
                     "APPLICANT"
-                    if ref.party_id == "applicant"
+                    if p_lower == "applicant"
                     else (
                         "GUARANTOR"
-                        if (ref.party_id and "guarantor" in str(ref.party_id).lower())
+                        if any(k in p_lower for k in ["guarantor", "joint_applicant", "co_applicant"])
                         else "SHARED"
                     )
                 )
@@ -192,6 +194,7 @@ def create_review_state(
         edit_history=[],
         blocking_issues=list(validated_report.blocking_issues),
         warnings=list(validated_report.warnings),
+        fraud_remarks=getattr(validated_report, "fraud_remarks", None) or DocumentFraudRemarksSection(),
         can_export_pdf=can_export,
     )
 
@@ -357,6 +360,8 @@ def revalidate_review_state(
     state.validation_status = val_report.overall_status
     state.blocking_issues = list(val_report.blocking_issues)
     state.warnings = list(val_report.warnings)
+    if hasattr(val_report, "fraud_remarks") and val_report.fraud_remarks:
+        state.fraud_remarks = val_report.fraud_remarks
 
     for pid, p_rev in state.particular_reviews.items():
         p_res = val_report.get_result(pid)

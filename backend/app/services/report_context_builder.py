@@ -41,6 +41,8 @@ from app.schemas.report_context import (
     FactProvenance,
 )
 
+from app.services.fraud_remarks_builder import build_document_fraud_remarks
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,6 +89,7 @@ def build_report_context(
         source_id: Optional[str],
         particular_ids: List[str],
         status: Optional[str] = None,
+        party_id: Optional[str] = None,
     ) -> FactProvenance:
         if status is None:
             if value is not None and value != "" and value != []:
@@ -103,6 +106,7 @@ def build_report_context(
             source=source,
             source_id=source_id,
             particular_ids=particular_ids,
+            party_id=party_id,
         )
         all_facts.append(fp)
         return fp
@@ -113,14 +117,14 @@ def build_report_context(
     app_source_id = f"app:{app.id}"
 
     # Traceable Applicant Facts
-    record_fact("applicant.name", app.applicant_name, "applications", app_source_id, ["P1"])
-    record_fact("applicant.father_name", app.father_name, "applications", app_source_id, ["P1"])
-    record_fact("applicant.address", app.address, "applications", app_source_id, ["P1", "P2"])
-    record_fact("applicant.mobile", app.applicant_mobile, "applications", app_source_id, ["P1"])
-    record_fact("applicant.email", app.applicant_email, "applications", app_source_id, ["P1"])
-    record_fact("applicant.dob", app.dob, "applications", app_source_id, ["P1"])
-    record_fact("applicant.pan_number", app.pan_number, "applications", app_source_id, ["P3"])
-    record_fact("applicant.aadhaar_number", app.aadhaar_number, "applications", app_source_id, ["P2E", "P3"])
+    record_fact("applicant.name", app.applicant_name, "applications", app_source_id, ["P1"], party_id="applicant")
+    record_fact("applicant.father_name", app.father_name, "applications", app_source_id, ["P1"], party_id="applicant")
+    record_fact("applicant.address", app.address, "applications", app_source_id, ["P1", "P2"], party_id="applicant")
+    record_fact("applicant.mobile", app.applicant_mobile, "applications", app_source_id, ["P1"], party_id="applicant")
+    record_fact("applicant.email", app.applicant_email, "applications", app_source_id, ["P1"], party_id="applicant")
+    record_fact("applicant.dob", app.dob, "applications", app_source_id, ["P1"], party_id="applicant")
+    record_fact("applicant.pan_number", app.pan_number, "applications", app_source_id, ["P3"], party_id="applicant")
+    record_fact("applicant.aadhaar_number", app.aadhaar_number, "applications", app_source_id, ["P2E", "P3"], party_id="applicant")
 
     applicant_party = NormalizedParty(
         party_id="applicant",
@@ -150,17 +154,18 @@ def build_report_context(
     for ja in joint_applicants:
         ja_source_id = f"joint_applicants:{ja.id}"
         prefix = f"guarantor_{ja.index}"
-        record_fact(f"{prefix}.name", ja.name, "joint_applicants", ja_source_id, ["P1"])
-        record_fact(f"{prefix}.father_name", ja.father_name, "joint_applicants", ja_source_id, ["P1"])
-        record_fact(f"{prefix}.address", ja.address, "joint_applicants", ja_source_id, ["P1", "P2"])
-        record_fact(f"{prefix}.pan_number", ja.pan_number, "joint_applicants", ja_source_id, ["P3"])
-        record_fact(f"{prefix}.aadhaar_number", ja.aadhaar_number, "joint_applicants", ja_source_id, ["P2E", "P3"])
-        record_fact(f"{prefix}.income", ja.income, "joint_applicants", ja_source_id, ["P4", "P4D"])
-        record_fact(f"{prefix}.occupation", ja.occupation, "joint_applicants", ja_source_id, ["P4D"])
-        record_fact(f"{prefix}.years_in_occupation", ja.years_in_occupation, "joint_applicants", ja_source_id, ["P4D"])
+        g_party_id = f"guarantor:{ja.index}" if ja.applicant_type == "guarantor" else f"{ja.applicant_type}:{ja.index}"
+        record_fact(f"{prefix}.name", ja.name, "joint_applicants", ja_source_id, ["P1"], party_id=g_party_id)
+        record_fact(f"{prefix}.father_name", ja.father_name, "joint_applicants", ja_source_id, ["P1"], party_id=g_party_id)
+        record_fact(f"{prefix}.address", ja.address, "joint_applicants", ja_source_id, ["P1", "P2"], party_id=g_party_id)
+        record_fact(f"{prefix}.pan_number", ja.pan_number, "joint_applicants", ja_source_id, ["P3"], party_id=g_party_id)
+        record_fact(f"{prefix}.aadhaar_number", ja.aadhaar_number, "joint_applicants", ja_source_id, ["P2E", "P3"], party_id=g_party_id)
+        record_fact(f"{prefix}.income", ja.income, "joint_applicants", ja_source_id, ["P4", "P4D"], party_id=g_party_id)
+        record_fact(f"{prefix}.occupation", ja.occupation, "joint_applicants", ja_source_id, ["P4D"], party_id=g_party_id)
+        record_fact(f"{prefix}.years_in_occupation", ja.years_in_occupation, "joint_applicants", ja_source_id, ["P4D"], party_id=g_party_id)
 
         g_party = NormalizedParty(
-            party_id=f"{ja.applicant_type}:{ja.index}",
+            party_id=g_party_id,
             party_type=ja.applicant_type,
             name=_safe_str(ja.name),
             father_name=_safe_str(ja.father_name),
@@ -180,21 +185,142 @@ def build_report_context(
         guarantors_list.append(g_party)
 
     # ─────────────────────────────────────────────────────────────────
-    # 2. Documents Normalization
+    # 2. Documents Normalization & Guarantor Discovery
     # ─────────────────────────────────────────────────────────────────
-    raw_docs = db.query(Document).filter(Document.application_id == app.id).all()
-    normalized_docs: List[NormalizedDocumentMeta] = []
+    raw_docs = db.query(Document).filter(Document.application_id == app.id).order_by(Document.id.asc()).all()
     income_doc_types = {"salary_slip", "income_cert", "form_16", "itr"}
     bank_doc_types = {"bank_statement"}
     vehicle_doc_types = {"vehicle_document", "invoice"}
+    kyc_doc_types = {"aadhaar", "pan", "driving_licence", "voter_id", "passport"}
+    property_doc_types = {
+        "sale_deed", "tax_receipt", "encumbrance_cert", "building_plan",
+        "ownership_proof", "property_image", "site_front_view",
+        "site_side_view", "site_interior", "site_entrance", "site_landmark",
+        "geo_site_front_view", "geo_site_side_view", "geo_site_interior",
+        "geo_site_entrance", "geo_site_landmark", "residence_proof", "house_photograph"
+    }
 
+    # Discover any Guarantors from uploaded joint applicant documents if no JointApplicant table record exists
+    existing_indices = {ja.index for ja in joint_applicants}
+    doc_joint_indices = sorted(list({
+        d.joint_applicant_index for d in raw_docs
+        if d.joint_applicant_index is not None and d.joint_applicant_index not in existing_indices
+    }))
+
+    for idx in doc_joint_indices:
+        idx_docs = [d for d in raw_docs if d.joint_applicant_index == idx]
+        g_name = None
+        g_father = None
+        g_address = None
+        g_pan = None
+        g_aadhaar = None
+        g_dob = None
+        g_income = None
+        g_occ = None
+
+        for d in idx_docs:
+            if not d.structured_data:
+                continue
+            try:
+                sd = json.loads(d.structured_data) if isinstance(d.structured_data, str) else d.structured_data
+            except Exception:
+                continue
+            if not isinstance(sd, dict):
+                continue
+
+            dtype_str = d.document_type.value if hasattr(d.document_type, "value") else str(d.document_type)
+
+            cand_name = sd.get("applicant_name") or sd.get("name")
+            if cand_name and cand_name not in ["Of The Valuer"]:
+                # If applicant address references this person (e.g. W/O Devaraju T N), prioritize it
+                if not g_name or (app.address and cand_name.lower() in app.address.lower()):
+                    g_name = cand_name
+
+            if sd.get("father_name") and not g_father:
+                g_father = sd.get("father_name")
+
+            if sd.get("address") and not g_address:
+                g_address = sd.get("address")
+
+            if sd.get("pan_number") and not g_pan:
+                g_pan = sd.get("pan_number")
+
+            cand_aadhaar = sd.get("aadhaar_number") or sd.get("aadhaar") or sd.get("aadhaar_no") or sd.get("uid")
+            if cand_aadhaar and not g_aadhaar:
+                g_aadhaar = str(cand_aadhaar)
+
+            if sd.get("dob") and not g_dob:
+                g_dob = sd.get("dob")
+
+            if dtype_str in income_doc_types:
+                if sd.get("monthly_income") is not None and g_income is None:
+                    g_income = sd.get("monthly_income")
+                elif sd.get("net_income") is not None and g_income is None:
+                    g_income = sd.get("net_income")
+                if sd.get("designation") and not g_occ:
+                    g_occ = sd.get("designation")
+                elif sd.get("occupation") and not g_occ:
+                    g_occ = sd.get("occupation")
+
+        # Determine relationship
+        rel = "Guarantor"
+        if app.address and g_name:
+            addr_lower = app.address.lower()
+            name_parts = [p for p in g_name.lower().split() if len(p) > 2]
+            if any(p in addr_lower for p in name_parts):
+                if any(w in addr_lower for w in ["w/o", "wio", "h/o"]):
+                    rel = "Spouse"
+                elif any(w in addr_lower for w in ["s/o", "d/o"]):
+                    rel = "Family Member"
+
+        synthesized_g = NormalizedParty(
+            party_id=f"guarantor:{idx}",
+            party_type="guarantor",
+            name=_safe_str(g_name),
+            father_name=_safe_str(g_father),
+            address=_safe_str(g_address),
+            mobile=None,
+            email=None,
+            dob=_safe_str(g_dob),
+            aadhaar_number=_safe_str(g_aadhaar),
+            masked_aadhaar_number=_mask_aadhaar(g_aadhaar),
+            pan_number=_safe_str(g_pan),
+            occupation=_safe_str(g_occ),
+            years_in_occupation=None,
+            income=g_income,
+            income_period="monthly",
+            relationship_to_applicant=rel,
+        )
+        guarantors_list.append(synthesized_g)
+
+        ja_source_id = f"documents:guarantor_{idx}"
+        prefix = f"guarantor_{idx}"
+        record_fact(f"{prefix}.name", synthesized_g.name, "documents", ja_source_id, ["P1"], party_id=synthesized_g.party_id)
+        record_fact(f"{prefix}.father_name", synthesized_g.father_name, "documents", ja_source_id, ["P1"], party_id=synthesized_g.party_id)
+        record_fact(f"{prefix}.address", synthesized_g.address, "documents", ja_source_id, ["P1", "P2"], party_id=synthesized_g.party_id)
+        record_fact(f"{prefix}.pan_number", synthesized_g.pan_number, "documents", ja_source_id, ["P3"], party_id=synthesized_g.party_id)
+        record_fact(f"{prefix}.aadhaar_number", synthesized_g.aadhaar_number, "documents", ja_source_id, ["P2E", "P3"], party_id=synthesized_g.party_id)
+        if synthesized_g.income is not None:
+            record_fact(f"{prefix}.income", synthesized_g.income, "documents", ja_source_id, ["P4", "P4D"], party_id=synthesized_g.party_id)
+        if synthesized_g.occupation:
+            record_fact(f"{prefix}.occupation", synthesized_g.occupation, "documents", ja_source_id, ["P4D"], party_id=synthesized_g.party_id)
+
+    normalized_docs: List[NormalizedDocumentMeta] = []
     income_docs_found: List[str] = []
+    app_income_docs_found: List[str] = []
+    guar_income_docs_found: List[str] = []
     bank_docs_found: List[str] = []
     vehicle_docs_found: List[str] = []
+    property_docs_found: List[str] = []
 
     for d in raw_docs:
         dtype = d.document_type.value if hasattr(d.document_type, "value") else str(d.document_type)
-        p_id = "applicant" if d.joint_applicant_index is None else f"joint_applicant:{d.joint_applicant_index}"
+        if d.joint_applicant_index is None:
+            p_id = "applicant"
+        else:
+            matching_g = next((g for g in guarantors_list if g.party_id.endswith(f":{d.joint_applicant_index}")), None)
+            p_id = matching_g.party_id if matching_g else f"guarantor:{d.joint_applicant_index}"
+
         ocr_st = "ocr_done" if d.processed == 2 else ("preprocessed" if d.processed == 1 else "raw")
 
         doc_meta = NormalizedDocumentMeta(
@@ -210,12 +336,42 @@ def build_report_context(
         )
         normalized_docs.append(doc_meta)
 
+        # Track particular IDs relevant to this document
+        doc_pids: List[str] = []
+        if dtype in kyc_doc_types:
+            doc_pids.extend(["P1", "P3"])
+            if dtype == "aadhaar":
+                doc_pids.append("P2E")
+        elif dtype in income_doc_types:
+            doc_pids.extend(["P4", "P4A", "P4B"])
+        elif dtype in bank_doc_types:
+            doc_pids.extend(["P5", "P5A", "P5B", "P5C"])
+        elif dtype in property_doc_types:
+            doc_pids.extend(["P2", "P2A", "P2D"])
+        elif dtype in vehicle_doc_types:
+            doc_pids.extend(["P7", "P7A", "P7B"])
+
+        record_fact(
+            f"document.{d.id}.status",
+            "available",
+            "documents",
+            f"doc:{d.id}",
+            doc_pids,
+            party_id=p_id,
+        )
+
         if dtype in income_doc_types:
             income_docs_found.append(dtype)
+            if p_id == "applicant":
+                app_income_docs_found.append(dtype)
+            else:
+                guar_income_docs_found.append(dtype)
         if dtype in bank_doc_types:
             bank_docs_found.append(dtype)
         if dtype in vehicle_doc_types:
             vehicle_docs_found.append(dtype)
+        if dtype in property_doc_types:
+            property_docs_found.append(dtype)
 
     record_fact(
         "documents.income_docs_seen",
@@ -223,13 +379,40 @@ def build_report_context(
         "documents",
         app_source_id,
         ["P4", "P4A"],
+        party_id="applicant" if not guarantors_list else None,
     )
+    if app_income_docs_found:
+        record_fact(
+            "applicant.income_docs_seen",
+            sorted(list(set(app_income_docs_found))),
+            "documents",
+            app_source_id,
+            ["P4", "P4A"],
+            party_id="applicant",
+        )
+    if guar_income_docs_found:
+        for g in guarantors_list:
+            record_fact(
+                f"{g.party_id}.income_docs_seen",
+                sorted(list(set(guar_income_docs_found))),
+                "documents",
+                app_source_id,
+                ["P4", "P4A"],
+                party_id=g.party_id,
+            )
     record_fact(
         "documents.bank_docs_seen",
         sorted(list(set(bank_docs_found))),
         "documents",
         app_source_id,
         ["P5"],
+    )
+    record_fact(
+        "documents.property_docs_seen",
+        sorted(list(set(property_docs_found))),
+        "documents",
+        app_source_id,
+        ["P2", "P2A", "P2D"],
     )
 
     # ─────────────────────────────────────────────────────────────────
@@ -349,6 +532,7 @@ def build_report_context(
                 source="application_findings",
                 linked_document_ids=[d.id for d in f.documents],
                 party_id=None,
+                evidence=f.evidence if isinstance(f.evidence, dict) else {},
             )
         )
 
@@ -395,6 +579,12 @@ def build_report_context(
             }
             if not applicant_party.address:
                 missing_fields.append("residence_address")
+
+            for g in guarantors_list:
+                guar_facts.append({
+                    "party_id": g.party_id,
+                    "residence_address": g.address,
+                })
 
         elif pid == "P2A":
             app_facts = {
@@ -474,6 +664,18 @@ def build_report_context(
                 })
 
         elif pid == "P4":
+            app_facts = {
+                "income_documents_seen": sorted(list(set(app_income_docs_found))),
+                "income": applicant_party.income,
+                "occupation": applicant_party.occupation,
+            }
+            for g in guarantors_list:
+                guar_facts.append({
+                    "party_id": g.party_id,
+                    "income_documents_seen": sorted(list(set(guar_income_docs_found))),
+                    "income": g.income,
+                    "occupation": g.occupation,
+                })
             shared = {
                 "income_documents_seen": sorted(list(set(income_docs_found))),
             }
@@ -481,6 +683,14 @@ def build_report_context(
                 missing_fields.append("income_documents")
 
         elif pid == "P4A":
+            app_facts = {
+                "documents_seen": sorted(list(set(app_income_docs_found))),
+            }
+            for g in guarantors_list:
+                guar_facts.append({
+                    "party_id": g.party_id,
+                    "documents_seen": sorted(list(set(guar_income_docs_found))),
+                })
             shared = {
                 "documents_seen": sorted(list(set(income_docs_found))),
             }
@@ -494,15 +704,54 @@ def build_report_context(
             }
 
         elif pid == "P4C":
+            extracted_emp = None
+            for d in raw_docs:
+                if d.joint_applicant_index is None and d.document_type.value in income_doc_types and d.structured_data:
+                    try:
+                        sd = json.loads(d.structured_data) if isinstance(d.structured_data, str) else d.structured_data
+                        if isinstance(sd, dict) and sd.get("employer_name"):
+                            extracted_emp = sd["employer_name"]
+                            break
+                    except Exception:
+                        pass
             app_facts = {
-                "employer_name": None,  # normalized strictly from structured extraction if present
+                "employer_name": extracted_emp,
                 "employer_address": None,
             }
+            for g in guarantors_list:
+                g_emp = None
+                for d in raw_docs:
+                    if d.joint_applicant_index is not None and d.document_type.value in income_doc_types and d.structured_data:
+                        try:
+                            sd = json.loads(d.structured_data) if isinstance(d.structured_data, str) else d.structured_data
+                            if isinstance(sd, dict) and sd.get("employer_name"):
+                                g_emp = sd["employer_name"]
+                                break
+                        except Exception:
+                            pass
+                guar_facts.append({
+                    "party_id": g.party_id,
+                    "employer_name": g_emp,
+                })
 
         elif pid == "P4D":
+            extracted_income = applicant_party.income
+            extracted_occ = applicant_party.occupation
+            if extracted_income is None:
+                for d in raw_docs:
+                    if d.joint_applicant_index is None and d.document_type.value in income_doc_types and d.structured_data:
+                        try:
+                            sd = json.loads(d.structured_data) if isinstance(d.structured_data, str) else d.structured_data
+                            if isinstance(sd, dict) and sd.get("monthly_income"):
+                                extracted_income = sd["monthly_income"]
+                                if not extracted_occ and sd.get("designation"):
+                                    extracted_occ = sd["designation"]
+                                break
+                        except Exception:
+                            pass
             app_facts = {
-                "occupation": applicant_party.occupation,
-                "income": applicant_party.income,
+                "occupation": extracted_occ,
+                "income": extracted_income,
                 "years_in_occupation": applicant_party.years_in_occupation,
             }
             for g in guarantors_list:
@@ -682,6 +931,8 @@ def build_report_context(
     canonical_json = json.dumps(hashable_payload, sort_keys=True, separators=(",", ":"))
     input_hash = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
+    fraud_remarks = build_document_fraud_remarks(norm_findings, normalized_docs)
+
     return ReportContext(
         metadata=report_meta,
         applicant=applicant_party,
@@ -694,5 +945,6 @@ def build_report_context(
         site_verification=site_dict,
         property_details=prop_dict,
         missing_information=missing_info_list,
+        fraud_remarks=fraud_remarks,
         input_hash=input_hash,
     )

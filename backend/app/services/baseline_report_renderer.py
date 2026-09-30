@@ -411,10 +411,11 @@ def render_baseline_report(
                     # Section 3 KYC: Display verified info if available; otherwise strictly NA
                     g_findings = [f for f in context.findings if f.particular_id == "P3" and f.party_id == g.party_id]
                     g_has_kyc_docs = any(
-                        d.party_id == g.party_id and d.document_type in ("aadhaar", "pan")
+                        (d.party_id == g.party_id or (d.party_id and g.party_id and d.party_id.split(':')[-1] == g.party_id.split(':')[-1]))
+                        and d.document_type in ("aadhaar", "pan")
                         for d in context.documents
                     )
-                    if g_findings or g_has_kyc_docs:
+                    if g_findings or g_has_kyc_docs or (g.pan_number and g.pan_number != "N/A") or (g.masked_aadhaar and g.masked_aadhaar != "N/A"):
                         if g.pan_number and g.pan_number != "N/A":
                             g_summary_lines.append(f"PAN: {g.pan_number}")
                         if g.masked_aadhaar and g.masked_aadhaar != "N/A":
@@ -427,7 +428,7 @@ def render_baseline_report(
                 elif pid == "P4":
                     g_income_docs = [
                         d.original_name or d.file_path for d in context.documents
-                        if (d.party_id == g.party_id or d.party_id == f"joint_applicant:{g.party_id.split(':')[-1]}")
+                        if (d.party_id == g.party_id or (d.party_id and g.party_id and d.party_id.split(':')[-1] == g.party_id.split(':')[-1]))
                         and d.document_type in ("salary_slip", "form_16", "itr", "income_cert")
                     ]
                     g_findings = [f for f in context.findings if f.particular_id == "P4" and f.party_id == g.party_id]
@@ -442,7 +443,7 @@ def render_baseline_report(
                 elif pid == "P4A":
                     g_income_docs = [
                         d.original_name or d.file_path for d in context.documents
-                        if (d.party_id == g.party_id or d.party_id == f"joint_applicant:{g.party_id.split(':')[-1]}")
+                        if (d.party_id == g.party_id or (d.party_id and g.party_id and d.party_id.split(':')[-1] == g.party_id.split(':')[-1]))
                         and d.document_type in ("salary_slip", "form_16", "itr", "income_cert")
                     ]
                     if g_income_docs:
@@ -469,7 +470,7 @@ def render_baseline_report(
                 elif pid == "P4D":
                     g_income_docs = [
                         d.original_name or d.file_path for d in context.documents
-                        if (d.party_id == g.party_id or d.party_id == f"joint_applicant:{g.party_id.split(':')[-1]}")
+                        if (d.party_id == g.party_id or (d.party_id and g.party_id and d.party_id.split(':')[-1] == g.party_id.split(':')[-1]))
                         and d.document_type in ("salary_slip", "form_16", "itr", "income_cert")
                     ]
                     g_findings = [f for f in context.findings if f.particular_id == "P4D" and f.party_id == g.party_id]
@@ -486,7 +487,7 @@ def render_baseline_report(
                 elif pid in ("P5", "P5A", "P5B", "P5C"):
                     g_bank_docs = [
                         d.original_name or d.file_path for d in context.documents
-                        if (d.party_id == g.party_id or d.party_id == f"joint_applicant:{g.party_id.split(':')[-1]}")
+                        if (d.party_id == g.party_id or (d.party_id and g.party_id and d.party_id.split(':')[-1] == g.party_id.split(':')[-1]))
                         and d.document_type == "bank_statement"
                     ]
                     g_findings = [f for f in context.findings if f.particular_id == pid and f.party_id == g.party_id]
